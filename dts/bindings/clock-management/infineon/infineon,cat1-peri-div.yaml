@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+# or an affiliate of Infineon Technologies AG. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Infineon CAT1 peripheral clock divider (peri-div) for the clock-management
+  framework.
+
+  Models a peripheral divider channel as an RFC "standard" clock. The single
+  specifier cell is the integer divide value (1-based, matching the existing
+  infineon,peri-div clock-control binding). Fractional dividers use the
+  optional div-frac-value property for the fractional part.
+
+compatible: "infineon,cat1-peri-div"
+
+include: [clock-node.yaml]
+
+properties:
+  input:
+    type: phandle
+    required: true
+    description: Upstream clock (clk_hf) feeding this divider group.
+
+  peri-group:
+    type: uint8-array
+    required: true
+    description: Two bytes, [instance, group], identifying the divider block.
+
+  div-type:
+    type: int
+    required: true
+    description: |
+      Divider type: 0 = 8-bit, 1 = 16-bit, 2 = 16.5-bit, 3 = 24.5-bit,
+      matching the DIV_*_BIT tokens used by the existing PSC3 clock tree.
+
+  channel:
+    type: int
+    required: true
+    description: Divider channel within the group.
+
+  clock-div:
+    type: int
+    default: 1
+    description: |
+      Default integer divide value (1-based). Used until a clock-state applies
+      a new value through the specifier cell.
+
+  div-frac-value:
+    type: int
+    default: 0
+    description: Fractional part for 16.5-bit and 24.5-bit dividers.
+
+  # Register-direct backend only (ignored by the PDL backend):
+  reg-addr:
+    type: int
+    description: Absolute address of the divider control (DIV_x_CTL) register.
+
+  cmd-reg-addr:
+    type: int
+    description: Absolute address of the group divider command (DIV_CMD) register.
+
+  div-lsb:
+    type: int
+    description: Least-significant bit of the integer-divider field in the control register.
+
+  div-width:
+    type: int
+    description: Width in bits of the integer-divider field.
+
+  "#clock-cells":
+    const: 1
+
+clock-cells:
+  - divider

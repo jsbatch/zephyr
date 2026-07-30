@@ -14,6 +14,7 @@ include:
   - name: pinctrl-device.yaml
   - name: "infineon,scb.yaml"
   - name: "infineon,system-interrupts.yaml"
+  - name: clock-device.yaml
 
 properties:
   reg:

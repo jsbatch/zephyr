@@ -20,6 +20,21 @@ config GPIO
 config CLOCK_CONTROL
 	default y
 
+# The clock tree is modelled with the clock-management framework
+# (system_clocks_cm.dtsi) and the console UART sources its clock through it.
+# The peripheral leaf dividers stay on CLOCK_CONTROL above.
+config CLOCK_MANAGEMENT
+	default y
+
+config UART_INFINEON_CLOCK_MANAGEMENT
+	default y
+
+# Bring up the peripheral-group clk_hf roots (clk_hf1/hf3/hf4) at boot for the
+# drivers still on the legacy clock path (counter, PWM, SPI, ...). Remove once
+# every clk_hf has a converted clock-management consumer.
+config CLOCK_MANAGEMENT_INFINEON_CAT1_LEGACY_BRINGUP
+	default y
+
 config CONSOLE
 	default y
 

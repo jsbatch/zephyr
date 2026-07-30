@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+# or an affiliate of Infineon Technologies AG. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Infineon CAT1 low-power DPLL (DPLL_LP) for the clock-management framework.
+
+  Modelled as an RFC "standard" clock: its input is the clock-path multiplexer
+  that supplies the DPLL reference, and its output rate is computed from the
+  feedback/reference/output divider fields. The DPLL programming sequence is a
+  validated calibration/trim procedure retained through the vendor library, so
+  this producer is used unchanged by both the PDL and register-direct backends.
+
+compatible: "infineon,cat1-dpll"
+
+include: [clock-node.yaml]
+
+properties:
+  input:
+    type: phandle
+    required: true
+    description: Clock-path multiplexer supplying the DPLL reference.
+
+  instance:
+    type: int
+    required: true
+    description: DPLL_LP instance index (0 or 1).
+
+  clock-frequency:
+    type: int
+    required: true
+    description: |
+      Computed DPLL output frequency in Hz. Provided for devicetree reference
+      and clock-state declarations; the actual output is determined by the
+      divider fields below.
+
+  feedback-div:
+    type: int
+    required: true
+    description: Feedback divider (multiplier).
+
+  reference-div:
+    type: int
+    required: true
+    description: Reference (pre-) divider.
+
+  output-div:
+    type: int
+    required: true
+    description: Output (post-) divider.
+
+  fraction-div:
+    type: int
+    default: 0
+    description: Fractional feedback value in 1/2^24 steps.
+
+  dco-mode-enable:
+    type: boolean
+    description: Enable DCO mode.
+
+  "#clock-cells":
+    const: 1
+
+clock-cells:
+  - dummy

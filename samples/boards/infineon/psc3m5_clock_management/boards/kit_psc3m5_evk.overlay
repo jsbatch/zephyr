@@ -1,0 +1,35 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+ * or an affiliate of Infineon Technologies AG. All rights reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * PSC3M5 clock-management full-shape consumer overlay.
+ *
+ * The full clock tree is modelled at SoC scope in system_clocks_cm.dtsi, which
+ * the board includes. This overlay only adds a demonstration consumer; it
+ * defines no producers of its own.
+ *
+ * The consumer takes an output for every clk_hf root that has one, so the
+ * sample can report the whole high-frequency tree through the clock-management
+ * API. Each output is paired with the state the SoC already uses for it: the
+ * CPU state for clk_hf0, the console state for clk_hf2, and the legacy
+ * bring-up states for the roots that still feed unconverted drivers.
+ */
+
+/ {
+	cm_demo: cm-demo {
+		compatible = "vnd,clock-consumer";
+		clock-outputs = <&clk_hf0_output>, <&clk_hf1_output>,
+				<&clk_hf2_output>, <&clk_hf3_output>,
+				<&clk_hf4_output>;
+		clock-output-names = "cpu", "hf1", "periclk", "hf3", "hf4";
+		clock-state-0 = <&clk_hf0_default>, <&clk_hf1_bringup>,
+				<&clk_hf2_default>, <&clk_hf3_bringup>,
+				<&clk_hf4_bringup>;
+		clock-state-names = "default";
+		status = "okay";
+	};
+};

@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+# or an affiliate of Infineon Technologies AG. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Infineon CAT1 clock-path multiplexer for the clock-management framework.
+
+  Models a path mux (FLL/DPLL reference selector) as an RFC "mux" clock. The
+  single specifier cell is the zero-based index into input-sources, matching
+  the generic clock-mux convention.
+
+  The generic clock-mux binding cannot represent this hardware: the selection
+  is applied through Cy_SysClk_ClkPathSetSource(path, source_enum), not a
+  single writable register bitfield, and the devicetree input order does not
+  encode the hardware source enum. The source-selects table below supplies
+  that per-input mapping, which is why a vendor binding is required.
+
+compatible: "infineon,cat1-path-mux"
+
+include: [clock-node.yaml]
+
+properties:
+  instance:
+    type: int
+    required: true
+    description: Clock-path index programmed by this mux.
+
+  input-sources:
+    type: phandles
+    required: true
+    description: Clock nodes that may be selected as the path source.
+
+  source-selects:
+    type: array
+    required: true
+    description: |
+      Hardware source enum (IFX_CAT1_CLKPATH_IN_*) for each entry in
+      input-sources, in the same order. Provides the index-to-enum mapping
+      the generic clock-mux binding lacks.
+
+  # Register-direct backend only (ignored by the PDL backend):
+  reg-addr:
+    type: int
+    description: Absolute address of the clock-path select register.
+
+  field-lsb:
+    type: int
+    description: Least-significant bit of the path-select bitfield.
+
+  field-width:
+    type: int
+    description: Width in bits of the path-select bitfield.
+
+  "#clock-cells":
+    const: 1
+
+clock-cells:
+  - mux

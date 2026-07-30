@@ -5,6 +5,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#ifndef ZEPHYR_INCLUDE_DRIVERS_CLOCK_CONTROL_CLOCK_CONTROL_IFX_CAT1_H_
+#define ZEPHYR_INCLUDE_DRIVERS_CLOCK_CONTROL_CLOCK_CONTROL_IFX_CAT1_H_
+
 #include <cy_sysclk.h>
 #include <cy_systick.h>
 
@@ -400,8 +403,6 @@ struct ifx_cat1_resource_inst {
 	uint8_t channel_num;
 };
 
-int ifx_cat1_clock_control_get_frequency(uint32_t dt_ord, uint32_t *frequency);
-
 static inline uint32_t ifx_cat1_utils_peri_pclk_get_frequency(en_clk_dst_t clk_dest,
 							      const struct ifx_cat1_clock *_clock)
 {
@@ -576,3 +577,5 @@ static inline uint8_t ifx_cat1_utils_peri_pclk_get_hfclk(uint8_t peri_group)
 	return -EINVAL;
 }
 #endif
+
+#endif /* ZEPHYR_INCLUDE_DRIVERS_CLOCK_CONTROL_CLOCK_CONTROL_IFX_CAT1_H_ */

@@ -32,3 +32,15 @@ config UART_INFINEON_CAT1_PDL
 	select USE_INFINEON_DMA if UART_ASYNC_API
 	help
 	  This option enables the PDL based UART driver for Infineon CAT1 family.
+
+config UART_INFINEON_CLOCK_MANAGEMENT
+	bool "Source the UART clock through the clock-management framework"
+	depends on UART_INFINEON_CAT1_PDL
+	depends on CLOCK_MANAGEMENT
+	help
+	  When enabled, the PDL UART driver applies its source clock state and
+	  reads its source clock rate through the clock-management framework
+	  instead of querying the clk_hf frequency directly. The driver keeps
+	  ownership of its own peripheral (baud) divider. The consumer node must
+	  provide clock-outputs, clock-output-names, clock-state-0, and
+	  clock-state-names properties.

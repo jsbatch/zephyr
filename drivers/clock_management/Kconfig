@@ -82,6 +82,8 @@ config CLOCK_MANAGEMENT_MUX
 
 source "drivers/clock_management/nxp_syscon/Kconfig"
 
+source "drivers/clock_management/infineon/Kconfig"
+
 module = CLOCK_MANAGEMENT
 module-str = clock-management
 source "subsys/logging/Kconfig.template.log_config"

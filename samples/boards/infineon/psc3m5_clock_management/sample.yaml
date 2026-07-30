@@ -1,0 +1,52 @@
+sample:
+  name: PSC3M5 Clock Management Full-Shape
+  description: >
+    Full-shape PSC3M5 clock tree modelled at SoC scope with the Infineon CAT1
+    clock-management producers, plus a consumer that reports every clk_hf root,
+    the clock-management / driver ownership boundary for the console UART, and
+    the declared-versus-computed rate for an applied state.
+tests:
+  sample.boards.infineon.psc3m5_clock_management.static:
+    platform_allow:
+      - kit_psc3m5_evk
+    tags:
+      - clock_management
+      - infineon
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "PSC3M5 full-shape clock-management demo"
+        - "CPU clock declared in devicetree: 180000000 Hz"
+        - "High-frequency clock roots"
+        - "clk_hf0.*180000000 Hz"
+        - "clk_hf1.*180000000 Hz"
+        - "clk_hf2.*80000000 Hz"
+        - "clk_hf3.*240000000 Hz"
+        - "clk_hf4.*96000000 Hz"
+        - "Ownership boundary for the console UART"
+        - "leaf divider /86"
+        - "declared rate .apply_state.*80000000 Hz"
+        - "computed rate .get_rate.*80000000 Hz"
+        - "declared == computed"
+        - "clock-management demo complete"
+  sample.boards.infineon.psc3m5_clock_management.runtime:
+    platform_allow:
+      - kit_psc3m5_evk
+    extra_args: EXTRA_CONF_FILE=runtime.conf
+    tags:
+      - clock_management
+      - infineon
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "PSC3M5 full-shape clock-management demo"
+        - "High-frequency clock roots"
+        - "clk_hf2.*80000000 Hz"
+        - "declared == computed"
+        - "Runtime rate request for clk_hf2"
+        - "granted rate.*80000000 Hz"
+        - "clock-management demo complete"

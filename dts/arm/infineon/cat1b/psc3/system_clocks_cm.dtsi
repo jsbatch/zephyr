@@ -1,0 +1,873 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+ * or an affiliate of Infineon Technologies AG. All rights reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * PSC3 clock tree modelled with the clock-management RFC producers.
+ *
+ * Clock management owns the shared upstream: every source, path multiplexer,
+ * DPLL, and clk_hf root is a clock-management producer with real parent phandle
+ * links (input / input-sources). The peripheral leaf dividers below stay on the
+ * legacy infineon,peri-div clock-control path, owned by the peripheral drivers,
+ * so drivers can move to clock management one at a time.
+ *
+ * Register addresses and bitfield positions on the upstream producers feed the
+ * register-direct backend; the PDL backend ignores them. Addresses are from the
+ * PSOC Control C3 Registers Reference Manual (SRSS chapter).
+ *
+ * The DPLL programming sequence is retained through the vendor library, so the
+ * DPLL producers are used unchanged by both backends.
+ */
+
+#include <zephyr/dt-bindings/clock/ifx_clock_source_common.h>
+#include <zephyr/dt-bindings/clock/ifx_clock_source_psc3xx.h>
+
+/ {
+	srss_power: srss_power {
+		#clock-cells = <0>;
+		compatible = "infineon,cat1b-power";
+		power-profile = "POWER_PROFILE_0";
+		status = "okay";
+	};
+
+	/* Clock tree 1/3: roots and path muxes (the 3 /clocks blocks merge). */
+	clocks {
+		/*
+		 * Root oscillator sources (TRM 19.3). Each clock-path mux can
+		 * select IMO (0), EXT_CLK (1), ECO (2), or IHO (6); ILO and WCO
+		 * reach the paths only through the per-path DSI mux and are used
+		 * mainly for the low-frequency domains below (TRM Table 110).
+		 */
+		clk_imo: clk_imo {
+			compatible = "infineon,cat1-clock-source";
+			#clock-cells = <0>;
+			clock-frequency = <8000000>;
+			system-clock = <IFX_IMO>;
+			reg-addr = <0x42201518>;	/* CLK_IMO_CONFIG */
+			status = "okay";
+		};
+
+		clk_iho: clk_iho {
+			compatible = "infineon,cat1-clock-source";
+			#clock-cells = <0>;
+			clock-frequency = <48000000>;
+			system-clock = <IFX_IHO>;
+			reg-addr = <0x42201560>;	/* CLK_IHO_CONFIG */
+			enable-bit = <31>;
+			status = "okay";
+		};
+
+		clk_ilo: clk_ilo {
+			compatible = "infineon,cat1-clock-source";
+			#clock-cells = <0>;
+			clock-frequency = <32768>;
+			system-clock = <IFX_ILO>;
+			reg-addr = <0x42201548>;	/* CLK_ILO_CONFIG */
+			enable-bit = <31>;
+			status = "okay";
+		};
+
+		clk_wco: clk_wco {
+			compatible = "infineon,cat1-clock-source";
+			#clock-cells = <0>;
+			clock-frequency = <32768>;
+			system-clock = <IFX_WCO>;
+			status = "okay";
+		};
+
+		/*
+		 * ECO and EXT_CLK need board components (a crystal or a driven
+		 * clock pin) that this board does not populate, so they are
+		 * disabled here for a board that fits them to enable. The path
+		 * muxes below still list them as inputs: the producer emits a
+		 * null slot for a disabled input, which keeps the remaining
+		 * inputs at their documented index and reports -ENOTCONN if one
+		 * is ever selected.
+		 */
+		clk_eco: clk_eco {
+			compatible = "infineon,cat1-clock-source";
+			#clock-cells = <0>;
+			clock-frequency = <0>;
+			system-clock = <IFX_ECO>;
+			reg-addr = <0x4220151c>;	/* CLK_ECO_CONFIG */
+			status = "disabled";
+		};
+
+		clk_ext: clk_ext {
+			compatible = "infineon,cat1-clock-source";
+			#clock-cells = <0>;
+			clock-frequency = <0>;
+			system-clock = <IFX_EXT>;
+			status = "disabled";
+		};
+
+		/*
+		 * ECO prescaler (TRM 19.3.7); one of the CLK_LF source options.
+		 * Disabled with its ECO parent: the generic fixed-factor
+		 * producer would otherwise reference a clock object that a
+		 * disabled clk_eco never emits.
+		 */
+		eco_prescaler: eco_prescaler {
+			compatible = "fixed-factor-clock";
+			#clock-cells = <0>;
+			clocks = <&clk_eco>;
+			clock-div = <1>;
+			status = "disabled";
+		};
+
+		/*
+		 * Seven clock paths (TRM 19.5.1): CLK_PATH0 contains the FLL,
+		 * CLK_PATH1 the DPLL0, CLK_PATH2 the DPLL1, and CLK_PATH3..6 are
+		 * direct. Each has a source mux (CLK_PATH_SELECTx). input-sources
+		 * order is [IMO, EXT_CLK, ECO, IHO]; IHO is index 3.
+		 */
+		path_mux0: path_mux0 {
+			compatible = "infineon,cat1-path-mux";
+			#clock-cells = <1>;
+			instance = <0>;
+			input-sources = <&clk_imo &clk_ext &clk_eco &clk_iho>;
+			source-selects = <IFX_CAT1_CLKPATH_IN_IMO IFX_CAT1_CLKPATH_IN_EXT
+					  IFX_CAT1_CLKPATH_IN_ECO IFX_CAT1_CLKPATH_IN_IHO>;
+			reg-addr = <0x42201200>;
+			field-lsb = <0>;
+			field-width = <3>;
+			status = "okay";
+		};
+
+		path_mux1: path_mux1 {
+			compatible = "infineon,cat1-path-mux";
+			#clock-cells = <1>;
+			instance = <1>;
+			input-sources = <&clk_imo &clk_ext &clk_eco &clk_iho>;
+			source-selects = <IFX_CAT1_CLKPATH_IN_IMO IFX_CAT1_CLKPATH_IN_EXT
+					  IFX_CAT1_CLKPATH_IN_ECO IFX_CAT1_CLKPATH_IN_IHO>;
+			reg-addr = <0x42201204>;
+			field-lsb = <0>;
+			field-width = <3>;
+			status = "okay";
+		};
+
+		path_mux2: path_mux2 {
+			compatible = "infineon,cat1-path-mux";
+			#clock-cells = <1>;
+			instance = <2>;
+			input-sources = <&clk_imo &clk_ext &clk_eco &clk_iho>;
+			source-selects = <IFX_CAT1_CLKPATH_IN_IMO IFX_CAT1_CLKPATH_IN_EXT
+					  IFX_CAT1_CLKPATH_IN_ECO IFX_CAT1_CLKPATH_IN_IHO>;
+			reg-addr = <0x42201208>;
+			field-lsb = <0>;
+			field-width = <3>;
+			status = "okay";
+		};
+
+		path_mux3: path_mux3 {
+			compatible = "infineon,cat1-path-mux";
+			#clock-cells = <1>;
+			instance = <3>;
+			input-sources = <&clk_imo &clk_ext &clk_eco &clk_iho>;
+			source-selects = <IFX_CAT1_CLKPATH_IN_IMO IFX_CAT1_CLKPATH_IN_EXT
+					  IFX_CAT1_CLKPATH_IN_ECO IFX_CAT1_CLKPATH_IN_IHO>;
+			reg-addr = <0x4220120c>;
+			field-lsb = <0>;
+			field-width = <3>;
+			status = "okay";
+		};
+
+		path_mux4: path_mux4 {
+			compatible = "infineon,cat1-path-mux";
+			#clock-cells = <1>;
+			instance = <4>;
+			input-sources = <&clk_imo &clk_ext &clk_eco &clk_iho>;
+			source-selects = <IFX_CAT1_CLKPATH_IN_IMO IFX_CAT1_CLKPATH_IN_EXT
+					  IFX_CAT1_CLKPATH_IN_ECO IFX_CAT1_CLKPATH_IN_IHO>;
+			reg-addr = <0x42201210>;
+			field-lsb = <0>;
+			field-width = <3>;
+			status = "okay";
+		};
+
+		path_mux5: path_mux5 {
+			compatible = "infineon,cat1-path-mux";
+			#clock-cells = <1>;
+			instance = <5>;
+			input-sources = <&clk_imo &clk_ext &clk_eco &clk_iho>;
+			source-selects = <IFX_CAT1_CLKPATH_IN_IMO IFX_CAT1_CLKPATH_IN_EXT
+					  IFX_CAT1_CLKPATH_IN_ECO IFX_CAT1_CLKPATH_IN_IHO>;
+			reg-addr = <0x42201214>;
+			field-lsb = <0>;
+			field-width = <3>;
+			status = "okay";
+		};
+
+		path_mux6: path_mux6 {
+			compatible = "infineon,cat1-path-mux";
+			#clock-cells = <1>;
+			instance = <6>;
+			input-sources = <&clk_imo &clk_ext &clk_eco &clk_iho>;
+			source-selects = <IFX_CAT1_CLKPATH_IN_IMO IFX_CAT1_CLKPATH_IN_EXT
+					  IFX_CAT1_CLKPATH_IN_ECO IFX_CAT1_CLKPATH_IN_IHO>;
+			reg-addr = <0x42201218>;
+			field-lsb = <0>;
+			field-width = <3>;
+			status = "okay";
+		};
+	};
+};
+
+/ {
+	/* Clock tree 2/3: FLL, DPLLs, and the clk_hf roots. */
+	clocks {
+		/* ---- FLL (generates CLK_PATH0, TRM 19.4.2/19.5.1) ---- */
+
+		/*
+		 * The FLL sits in CLK_PATH0 with path_mux0 as its reference.
+		 * The board does not reconfigure the FLL at runtime, so it is
+		 * modelled with the generic fixed-factor producer at its
+		 * configured ratio (48 MHz IHO x2 = 96 MHz). Active FLL
+		 * programming would use a dedicated producer like the DPLL.
+		 */
+		fll0: fll0 {
+			compatible = "fixed-factor-clock";
+			#clock-cells = <0>;
+			clocks = <&path_mux0 3>;
+			clock-mult = <2>;
+			clock-div = <1>;
+			status = "okay";
+		};
+
+		/* ---- Low-power DPLLs (CLK_PATH1/2, reference from a path mux) ---- */
+
+		dpll_lp0: dpll_lp0 {
+			compatible = "infineon,cat1-dpll";
+			#clock-cells = <1>;
+			input = <&path_mux1>;
+			instance = <0>;
+			clock-frequency = <180000000>;	/* 48M / 6 * 45 / 2 */
+			feedback-div = <45>;
+			reference-div = <6>;
+			output-div = <2>;
+			fraction-div = <0>;
+			dco-mode-enable;
+			status = "okay";
+		};
+
+		dpll_lp1: dpll_lp1 {
+			compatible = "infineon,cat1-dpll";
+			#clock-cells = <1>;
+			input = <&path_mux2>;
+			instance = <1>;
+			clock-frequency = <240000000>;	/* 48M / 6 * 60 / 2 */
+			feedback-div = <60>;
+			reference-div = <6>;
+			output-div = <2>;
+			fraction-div = <0>;
+			dco-mode-enable;
+			status = "okay";
+		};
+
+		/*
+		 * Seven high-frequency root clocks (TRM 19.5.2, Table 112). Each
+		 * selects a clock path via ROOT_MUX and applies a predivider.
+		 * Recommended sources per TRM Table 117; the board drives clk_hf2
+		 * from DPLL1 (CLK_PATH2) for CAN bit timing.
+		 */
+
+		/* clk_hf0: CPU, PERI, SRSS, CORDIC, groups 0/2. 180 MHz (DPLL0). */
+		clk_hf0: clk_hf0 {
+			compatible = "infineon,cat1-clk-hf";
+			#clock-cells = <1>;
+			input = <&dpll_lp0>;
+			instance = <0>;
+			source-path = <IFX_CLK_HF_IN_CLKPATH1>;
+			clock-div = <IFX_CLK_HF_NO_DIVIDE>;
+			max-frequency = <180000000>;
+			reg-addr = <0x42201240>;
+			mux-lsb = <0>;
+			mux-width = <4>;
+			div-lsb = <8>;
+			div-width = <4>;
+			enable-bit = <31>;
+			status = "okay";
+		};
+
+		/* clk_hf1: LPCOMP, groups 1/3 (SMARTIO, IOSS). 180 MHz (DPLL0). */
+		clk_hf1: clk_hf1 {
+			compatible = "infineon,cat1-clk-hf";
+			#clock-cells = <1>;
+			input = <&dpll_lp0>;
+			instance = <1>;
+			source-path = <IFX_CLK_HF_IN_CLKPATH1>;
+			clock-div = <IFX_CLK_HF_NO_DIVIDE>;
+			reg-addr = <0x42201244>;
+			mux-lsb = <0>;
+			mux-width = <4>;
+			div-lsb = <8>;
+			div-width = <4>;
+			enable-bit = <31>;
+			status = "okay";
+		};
+
+		/* clk_hf2: group 4 (CAN, SCB[0-4]). 80 MHz (DPLL1 / 3). */
+		clk_hf2: clk_hf2 {
+			compatible = "infineon,cat1-clk-hf";
+			#clock-cells = <1>;
+			input = <&dpll_lp1>;
+			instance = <2>;
+			source-path = <IFX_CLK_HF_IN_CLKPATH2>;
+			clock-div = <IFX_CLK_HF_DIVIDE_BY_3>;
+			reg-addr = <0x42201248>;
+			mux-lsb = <0>;
+			mux-width = <4>;
+			div-lsb = <8>;
+			div-width = <4>;
+			enable-bit = <31>;
+			status = "okay";
+		};
+
+		/* clk_hf3: HPPASS, group 5 (TCPWM, CSG). 240 MHz (DPLL1). */
+		clk_hf3: clk_hf3 {
+			compatible = "infineon,cat1-clk-hf";
+			#clock-cells = <1>;
+			input = <&dpll_lp1>;
+			instance = <3>;
+			source-path = <IFX_CLK_HF_IN_CLKPATH2>;
+			clock-div = <IFX_CLK_HF_NO_DIVIDE>;
+			max-frequency = <240000000>;
+			reg-addr = <0x4220124c>;
+			mux-lsb = <0>;
+			mux-width = <4>;
+			div-lsb = <8>;
+			div-width = <4>;
+			enable-bit = <31>;
+			status = "okay";
+		};
+
+		/* clk_hf4: group 6 (SCB[5]). From CLK_PATH0 (FLL) for UART/I2C. */
+		clk_hf4: clk_hf4 {
+			compatible = "infineon,cat1-clk-hf";
+			#clock-cells = <1>;
+			input = <&fll0>;
+			instance = <4>;
+			source-path = <IFX_CLK_HF_IN_CLKPATH0>;
+			clock-div = <IFX_CLK_HF_NO_DIVIDE>;
+			reg-addr = <0x42201250>;
+			mux-lsb = <0>;
+			mux-width = <4>;
+			div-lsb = <8>;
+			div-width = <4>;
+			enable-bit = <31>;
+			status = "okay";
+		};
+
+		/* clk_hf5: external clock output on clk_ext pin. Unused here. */
+		clk_hf5: clk_hf5 {
+			compatible = "infineon,cat1-clk-hf";
+			#clock-cells = <1>;
+			input = <&fll0>;
+			instance = <5>;
+			source-path = <IFX_CLK_HF_IN_CLKPATH0>;
+			clock-div = <IFX_CLK_HF_NO_DIVIDE>;
+			reg-addr = <0x42201254>;
+			mux-lsb = <0>;
+			mux-width = <4>;
+			div-lsb = <8>;
+			div-width = <4>;
+			enable-bit = <31>;
+			status = "disabled";
+		};
+
+		/*
+		 * clk_hf6: clock supervisor (CSV) reference, 8 MHz. Uses the
+		 * per-root DIRECT_MUX to source IMO directly (TRM Table 113),
+		 * so its parent is modelled as IMO. Unused on this board.
+		 */
+		clk_hf6: clk_hf6 {
+			compatible = "infineon,cat1-clk-hf";
+			#clock-cells = <1>;
+			input = <&clk_imo>;
+			instance = <6>;
+			source-path = <IFX_CLK_HF_IN_CLKPATH0>;
+			clock-div = <IFX_CLK_HF_NO_DIVIDE>;
+			reg-addr = <0x42201258>;
+			mux-lsb = <0>;
+			mux-width = <4>;
+			div-lsb = <8>;
+			div-width = <4>;
+			enable-bit = <31>;
+			status = "disabled";
+		};
+	};
+};
+
+/ {
+	peri0: peri0 {
+		/*
+		 * Peripheral leaf dividers, owned by the peripheral drivers
+		 * through the legacy infineon,peri-div clock-control path rather
+		 * than by clock management. Each group is fed by a fixed clk_hf
+		 * (gr0->hf0, gr1->hf1, gr4->hf2, gr5->hf3, gr6->hf4); the board
+		 * that uses a divider enables it.
+		 */
+
+		/* Group 0 (sourced by clk_hf0) */
+		peri0_group0_24_5bit_0: peri0_group0_24_5bit_0 {
+			#clock-cells = <0>;
+			compatible = "infineon,peri-div";
+			peri-group = [00 00];
+			div-type = <3>;		/* 24.5-bit */
+			channel = <0>;
+			clock-div = <1>;
+			status = "disabled";
+		};
+
+		/* Group 1 (sourced by clk_hf1) */
+		peri0_group1_8bit_0: peri0_group1_8bit_0 {
+			#clock-cells = <0>;
+			compatible = "infineon,peri-div";
+			peri-group = [00 01];
+			div-type = <0>;		/* 8-bit */
+			channel = <0>;
+			clock-div = <1>;
+			status = "disabled";
+		};
+	};
+};
+
+&peri0 {
+	/* Group 4 (sourced by clk_hf2): console UART, CAN, SPI, counters. */
+	peri0_group4_8bit_0: peri0_group4_8bit_0 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 04];
+		div-type = <0>;		/* 8-bit */
+		channel = <0>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group4_8bit_1: peri0_group4_8bit_1 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 04];
+		div-type = <0>;		/* 8-bit */
+		channel = <1>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group4_16bit_0: peri0_group4_16bit_0 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 04];
+		div-type = <1>;		/* 16-bit */
+		channel = <0>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group4_16_5bit_0: peri0_group4_16_5bit_0 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 04];
+		div-type = <2>;		/* 16.5-bit */
+		channel = <0>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group4_16_5bit_1: peri0_group4_16_5bit_1 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 04];
+		div-type = <2>;		/* 16.5-bit */
+		channel = <1>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group4_16_5bit_2: peri0_group4_16_5bit_2 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 04];
+		div-type = <2>;		/* 16.5-bit */
+		channel = <2>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group4_24_5bit_0: peri0_group4_24_5bit_0 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 04];
+		div-type = <3>;		/* 24.5-bit */
+		channel = <0>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+};
+
+&peri0 {
+	/* Group 5 (sourced by clk_hf3). */
+	peri0_group5_8bit_0: peri0_group5_8bit_0 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <0>;		/* 8-bit */
+		channel = <0>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_8bit_1: peri0_group5_8bit_1 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <0>;		/* 8-bit */
+		channel = <1>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_8bit_2: peri0_group5_8bit_2 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <0>;		/* 8-bit */
+		channel = <2>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_8bit_3: peri0_group5_8bit_3 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <0>;		/* 8-bit */
+		channel = <3>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_8bit_4: peri0_group5_8bit_4 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <0>;		/* 8-bit */
+		channel = <4>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_8bit_5: peri0_group5_8bit_5 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <0>;		/* 8-bit */
+		channel = <5>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_8bit_6: peri0_group5_8bit_6 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <0>;		/* 8-bit */
+		channel = <6>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_8bit_7: peri0_group5_8bit_7 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <0>;		/* 8-bit */
+		channel = <7>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_8bit_8: peri0_group5_8bit_8 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <0>;		/* 8-bit */
+		channel = <8>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_8bit_9: peri0_group5_8bit_9 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <0>;		/* 8-bit */
+		channel = <9>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_16bit_0: peri0_group5_16bit_0 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <1>;		/* 16-bit */
+		channel = <0>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_16bit_1: peri0_group5_16bit_1 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <1>;		/* 16-bit */
+		channel = <1>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_16bit_2: peri0_group5_16bit_2 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <1>;		/* 16-bit */
+		channel = <2>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+	peri0_group5_16bit_3: peri0_group5_16bit_3 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 05];
+		div-type = <1>;		/* 16-bit */
+		channel = <3>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+
+};
+
+&peri0 {
+	/* Group 6 (sourced by clk_hf4). */
+	peri0_group6_16_5bit_0: peri0_group6_16_5bit_0 {
+		#clock-cells = <0>;
+		compatible = "infineon,peri-div";
+		peri-group = [00 06];
+		div-type = <2>;		/* 16.5-bit */
+		channel = <0>;
+		clock-div = <1>;
+		status = "disabled";
+	};
+};
+
+/*
+ * Consumer-facing clock output for the console path.
+ *
+ * Ownership boundary: the clock-management framework owns the shared upstream
+ * clk_iho -> path_mux2 -> dpll_lp1 -> clk_hf2. A consumer reads this output's
+ * rate and derives its own leaf peripheral divider, so the console UART keeps
+ * ownership of its group-4 divider (matching how the baud divider is the
+ * driver's responsibility).
+ */
+&clk_hf2 {
+	clk_hf2_output: clk_hf2_output {
+		compatible = "clock-output";
+		#clock-cells = <0>;
+		status = "okay";
+
+		clk_hf2_default: default {
+			compatible = "clock-state";
+			clocks = <&path_mux2 3>,	/* IHO (index 3) */
+				 <&dpll_lp1 0>,
+				 <&clk_hf2 IFX_CLK_HF_DIVIDE_BY_3>;
+			clock-frequency = <80000000>;
+		};
+	};
+};
+
+/*
+ * CPU / system clock output. The CPU node consumes this output and the SoC
+ * init applies its default state at boot, because an always-on system clock
+ * has no peripheral driver to own it.
+ */
+&clk_hf0 {
+	clk_hf0_output: clk_hf0_output {
+		compatible = "clock-output";
+		#clock-cells = <0>;
+		status = "okay";
+
+		clk_hf0_default: default {
+			compatible = "clock-state";
+			clocks = <&path_mux1 3>,	/* IHO (index 3) */
+				 <&dpll_lp0 0>,
+				 <&clk_hf0 IFX_CLK_HF_NO_DIVIDE>;
+			clock-frequency = <180000000>;
+			/*
+			 * Pin the core clock. Without this, a runtime consumer
+			 * could renegotiate clk_hf0 through a rate request and
+			 * move the CPU frequency out from under the kernel. No
+			 * effect in a static build, where rate requests do not
+			 * exist.
+			 */
+			locking-state;
+		};
+	};
+};
+
+/*
+ * Legacy bring-up (transitional).
+ *
+ * Clock management programs a clk_hf only when a consumer applies its state, so
+ * a root feeding any driver that is not yet a clock-management consumer would
+ * otherwise sit at its reset configuration. Legacy bring-up gives those roots a
+ * boot-time state that the SoC applies at SYS_INIT(PRE_KERNEL_1, 1), before any
+ * peripheral driver initialises, when
+ * CONFIG_CLOCK_MANAGEMENT_INFINEON_CAT1_LEGACY_BRINGUP is set.
+ *
+ * clk_hf2 is included even though the console UART is already a consumer,
+ * because it is a SHARED root: peripheral group 4 also feeds CAN, which is not
+ * converted and derives its bit timing from this rate. Leaving bring-up to the
+ * UART would make CAN depend on driver initialisation order rather than on an
+ * owner. The UART re-applies the same state later, which is harmless.
+ *
+ * clk_hf0 (CPU) is owned by the SoC core-clock init; clk_hf5 and clk_hf6 feed no
+ * peripheral group and stay at reset. An entry drops out when the last consumer
+ * of that root becomes a clock-management consumer, and legacy bring-up is
+ * removed when the list empties.
+ */
+&clk_hf1 {
+	clk_hf1_output: clk_hf1_output {
+		compatible = "clock-output";
+		#clock-cells = <0>;
+		status = "okay";
+
+		clk_hf1_bringup: bringup {
+			compatible = "clock-state";
+			clocks = <&path_mux1 3>,	/* IHO (index 3) */
+				 <&dpll_lp0 0>,
+				 <&clk_hf1 IFX_CLK_HF_NO_DIVIDE>;
+			clock-frequency = <180000000>;
+		};
+	};
+};
+
+&clk_hf3 {
+	clk_hf3_output: clk_hf3_output {
+		compatible = "clock-output";
+		#clock-cells = <0>;
+		status = "okay";
+
+		clk_hf3_bringup: bringup {
+			compatible = "clock-state";
+			clocks = <&path_mux2 3>,	/* IHO (index 3) */
+				 <&dpll_lp1 0>,
+				 <&clk_hf3 IFX_CLK_HF_NO_DIVIDE>;
+			clock-frequency = <240000000>;
+		};
+	};
+};
+
+&clk_hf4 {
+	clk_hf4_output: clk_hf4_output {
+		compatible = "clock-output";
+		#clock-cells = <0>;
+		status = "okay";
+
+		clk_hf4_bringup: bringup {
+			compatible = "clock-state";
+			clocks = <&path_mux0 3>,	/* IHO (index 3) */
+				 <&clk_hf4 IFX_CLK_HF_NO_DIVIDE>;
+			clock-frequency = <96000000>;
+		};
+	};
+};
+
+/ {
+	/*
+	 * Owns the bring-up states above so the SoC can apply them at boot. A
+	 * board that needs a different root source (for example the NOR flash
+	 * variant driving clk_hf4 from DPLL1) overrides the clk_hf node and its
+	 * bring-up state.
+	 */
+	clk_legacy_bringup: clk-legacy-bringup {
+		compatible = "infineon,cat1-clock-legacy-bringup";
+		clock-outputs = <&clk_hf1_output>, <&clk_hf2_output>,
+				<&clk_hf3_output>, <&clk_hf4_output>;
+		clock-output-names = "hf1", "hf2", "hf3", "hf4";
+		clock-state-0 = <&clk_hf1_bringup>, <&clk_hf2_default>,
+				<&clk_hf3_bringup>, <&clk_hf4_bringup>;
+		clock-state-names = "default";
+		status = "okay";
+	};
+};
+
+/*
+ * Clock tree 3/3: low-frequency and housekeeping domains (TRM 19.5.3 - 19.5.6),
+ * placed after the clk_hf output and state overrides above.
+ *
+ * These are modelled for completeness against the TRM clock system. The board
+ * uses their reset defaults and does not reconfigure them, so no consumer
+ * applies a state through them. The mux domains use the Infineon path-mux
+ * producer for its source-select mapping; because their selection registers
+ * are not the clock-path registers, they must be driven through the
+ * register-direct backend (the PDL backend's path-source call applies only to
+ * the seven clock paths).
+ *
+ * Peripheral clock groups 2 (CRYPTO) and 3 (IOSS) have no dividers: those
+ * peripherals connect directly to CLK_HF0 and CLK_HF1 respectively (TRM
+ * 19.7.3), so they are not modelled as divider nodes.
+ */
+/ {
+	clocks {
+		/* CLK_TIMER: fixed 1 MHz = CLK_IMO / 8 for the CPU SysTick. */
+		clk_timer: clk_timer {
+			compatible = "fixed-factor-clock";
+			#clock-cells = <0>;
+			clocks = <&clk_imo>;
+			clock-div = <8>;
+			status = "okay";
+		};
+
+		/* CLK_LF: ILO / WCO / ECO-prescaler -> MCWDT and RTC. */
+		clk_lf: clk_lf {
+			compatible = "infineon,cat1-path-mux";
+			#clock-cells = <1>;
+			instance = <0>;
+			input-sources = <&clk_ilo &clk_wco &eco_prescaler>;
+			source-selects = <0 1 5>;	/* LFCLK_SEL */
+			reg-addr = <0x42201500>;	/* CLK_SELECT */
+			field-lsb = <0>;
+			field-width = <3>;
+			status = "okay";
+		};
+
+		/* CLK_PWR: IMO / IHO -> Arm power architecture (PPU, PDCM). */
+		clk_pwr: clk_pwr {
+			compatible = "infineon,cat1-path-mux";
+			#clock-cells = <1>;
+			instance = <0>;
+			input-sources = <&clk_imo &clk_iho>;
+			source-selects = <0 1>;		/* CLK_PWR_MUX */
+			reg-addr = <0x42212000>;	/* PWRMODE_CLK_SELECT */
+			field-lsb = <16>;
+			field-width = <2>;
+			status = "okay";
+		};
+
+		/* CLK_BAK: ILO / WCO -> backup domain (RTC). */
+		clk_bak: clk_bak {
+			compatible = "infineon,cat1-path-mux";
+			#clock-cells = <1>;
+			instance = <0>;
+			input-sources = <&clk_ilo &clk_wco>;
+			source-selects = <0 1>;
+			status = "disabled";
+		};
+	};
+};

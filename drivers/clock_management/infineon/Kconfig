@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+# or an affiliate of Infineon Technologies AG. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config CLOCK_MANAGEMENT_INFINEON_CAT1
+	bool
+	help
+	  Infineon CAT1 clock-management producer drivers.
+
+choice CLOCK_MANAGEMENT_INFINEON_CAT1_BACKEND
+	prompt "Infineon CAT1 clock producer backend"
+	default CLOCK_MANAGEMENT_INFINEON_CAT1_BACKEND_PDL
+	depends on CLOCK_MANAGEMENT_INFINEON_CAT1
+	help
+	  Selects how the Infineon CAT1 clock-management producers program the
+	  hardware. Both backends implement the same devicetree compatibles, so
+	  the clock model is unchanged; only the producer implementation differs.
+
+config CLOCK_MANAGEMENT_INFINEON_CAT1_BACKEND_PDL
+	bool "PDL runtime"
+	help
+	  Producers call the PDL (Cy_SysClk_*) runtime functions. No register
+	  addresses are required in devicetree.
+
+config CLOCK_MANAGEMENT_INFINEON_CAT1_BACKEND_REG
+	bool "Register-direct"
+	help
+	  Producers write registers directly using the register addresses and
+	  bitfield positions provided in devicetree. Family-agnostic; uses no
+	  PDL runtime and no vendor register-definition headers.
+
+endchoice
+
+config CLOCK_MANAGEMENT_INFINEON_CAT1_CLOCK_SOURCE
+	bool "Infineon CAT1 clock source producer"
+	default y
+	depends on DT_HAS_INFINEON_CAT1_CLOCK_SOURCE_ENABLED
+	select CLOCK_MANAGEMENT_INFINEON_CAT1
+	help
+	  Root clock-source producer for on-chip oscillators such as the IHO.
+
+config CLOCK_MANAGEMENT_INFINEON_CAT1_PATH_MUX
+	bool "Infineon CAT1 clock-path mux producer"
+	default y
+	depends on DT_HAS_INFINEON_CAT1_PATH_MUX_ENABLED
+	select CLOCK_MANAGEMENT_INFINEON_CAT1
+	help
+	  Clock-path multiplexer producer that selects the reference feeding a
+	  FLL/DPLL clock path.
+
+config CLOCK_MANAGEMENT_INFINEON_CAT1_CLK_HF
+	bool "Infineon CAT1 clk_hf producer"
+	default y
+	depends on DT_HAS_INFINEON_CAT1_CLK_HF_ENABLED
+	select CLOCK_MANAGEMENT_INFINEON_CAT1
+	help
+	  High-frequency root clock (clk_hf) producer with source select and
+	  integer divider.
+
+config CLOCK_MANAGEMENT_INFINEON_CAT1_PERI_DIV
+	bool "Infineon CAT1 peripheral divider producer"
+	default y
+	depends on DT_HAS_INFINEON_CAT1_PERI_DIV_ENABLED
+	select CLOCK_MANAGEMENT_INFINEON_CAT1
+	help
+	  Peripheral clock divider producer for integer and fractional dividers.
+
+config CLOCK_MANAGEMENT_INFINEON_CAT1_DPLL
+	bool "Infineon CAT1 DPLL producer"
+	default y
+	depends on DT_HAS_INFINEON_CAT1_DPLL_ENABLED
+	select CLOCK_MANAGEMENT_INFINEON_CAT1
+	help
+	  Low-power DPLL producer. The DPLL programming sequence is retained
+	  through the vendor library, so this producer is compiled for both the
+	  PDL and register-direct backends.
+
+config CLOCK_MANAGEMENT_INFINEON_CAT1_LEGACY_BRINGUP
+	bool "Bring up unconverted peripheral clk_hf roots at boot"
+	depends on CLOCK_MANAGEMENT_INFINEON_CAT1_CLK_HF
+	help
+	  Transitional support for incremental clock-management migration. Clock
+	  management programs a clk_hf only when a consumer applies its state, so
+	  a peripheral driver still on the legacy clock path would find its source
+	  clock at reset. When set, the SoC applies a boot-time bring-up state for
+	  the peripheral-group clk_hf roots that have no clock-management consumer
+	  yet. Enable it on a board that has such drivers; remove it once every
+	  clk_hf has a real consumer.

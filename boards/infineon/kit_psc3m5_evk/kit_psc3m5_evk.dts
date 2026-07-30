@@ -5,7 +5,7 @@
 
 /dts-v1/;
 #include <arm/infineon/cat1b/mpns/psc3m5fds2afq1_s.dtsi>
-#include <arm/infineon/cat1b/psc3/system_clocks.dtsi>
+#include <arm/infineon/cat1b/psc3/system_clocks_cm.dtsi>
 #include <arm/infineon/cat1b/psc3/psc3_partition.dtsi>
 #include "kit_psc3m5_evk-common.dtsi"
 #include "kit_psc3m5_evk-pinctrl.dtsi"

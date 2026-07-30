@@ -18,7 +18,7 @@
 #include <freq.h>
 #include <mem.h>
 #include <arm/infineon/cat1b/mpns/psc3m5fds2afq1_s.dtsi>
-#include <arm/infineon/cat1b/psc3/system_clocks.dtsi>
+#include <arm/infineon/cat1b/psc3/system_clocks_cm.dtsi>
 #include <arm/infineon/cat1b/psc3/psc3_partition.dtsi>
 #include "kit_psc3m5_evk-common.dtsi"
 #include "kit_psc3m5_evk-pinctrl.dtsi"
@@ -86,10 +86,17 @@ spi5: &scb5 {
 };
 
 /*
- * High-frequency clock clk_hf4 to feed the peri0_group6_16_5_bit0
- * peripheral clock.
+ * Drive clk_hf4 (SCB5 SPI, peripheral group 6) from DPLL1 at 240 MHz instead of
+ * the FLL, giving the SPI leaf divider more range for a faster NOR flash clock.
+ * The SoC legacy bring-up applies clk_hf4_bringup, so the override retargets the
+ * root's source and that state together.
  */
 &clk_hf4 {
-	source-path = <IFX_CLK_HF_IN_CLKPATH0>;
-	status = "okay";
+	input = <&dpll_lp1>;
+	source-path = <IFX_CLK_HF_IN_CLKPATH2>;
+};
+
+&clk_hf4_bringup {
+	clocks = <&path_mux2 3>, <&dpll_lp1 0>, <&clk_hf4 IFX_CLK_HF_NO_DIVIDE>;
+	clock-frequency = <240000000>;
 };

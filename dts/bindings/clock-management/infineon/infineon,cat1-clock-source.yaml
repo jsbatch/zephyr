@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+# or an affiliate of Infineon Technologies AG. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Infineon CAT1 root clock source for the clock-management framework.
+
+  Models a fixed-rate on-chip oscillator (for example the IHO) as an RFC
+  "root" clock. The node reports its rate through clock-frequency and gates
+  the oscillator through the framework on/off path. It takes no specifier
+  cells, so it never appears inside a clock-state "clocks" array.
+
+compatible: "infineon,cat1-clock-source"
+
+include: [clock-node.yaml]
+
+properties:
+  clock-frequency:
+    type: int
+    required: true
+    description: Frequency this source provides, in Hz.
+
+  system-clock:
+    type: int
+    required: true
+    description: |
+      Infineon clock-block identifier (IFX_* from
+      dt-bindings/clock/ifx_clock_source_common.h) selecting which oscillator
+      this source drives.
+
+  # Register-direct backend only (ignored by the PDL backend):
+  reg-addr:
+    type: int
+    description: Absolute address of the oscillator configuration/enable register.
+
+  enable-bit:
+    type: int
+    description: Bit position of the oscillator enable within reg-addr.
+
+  "#clock-cells":
+    const: 0

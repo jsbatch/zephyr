@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+# or an affiliate of Infineon Technologies AG. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Transitional clock-management consumer that brings up the peripheral-group
+  clk_hf roots at boot for peripheral drivers not yet converted to clock
+  management. Clock management programs a clk_hf only when a consumer applies
+  its state, so an unconverted driver would otherwise find its source clock at
+  reset. The SoC applies these states when
+  CONFIG_CLOCK_MANAGEMENT_INFINEON_CAT1_LEGACY_BRINGUP is set. The node and its
+  states are removed once every clk_hf has a real consumer.
+
+compatible: "infineon,cat1-clock-legacy-bringup"
+
+include: [base.yaml, clock-device.yaml]

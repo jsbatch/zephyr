@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+# or an affiliate of Infineon Technologies AG. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Infineon CAT1 high-frequency root clock (clk_hf) for the clock-management
+  framework.
+
+  Models a clk_hf instance as an RFC "standard" clock: it selects a clock path
+  as its source and applies an integer divider. The single specifier cell is
+  the divider selector (IFX_CLK_HF_* : the divide factor is the enum value
+  plus one).
+
+  The clk_hf legal maximum (for example 180 MHz on PSC3) is enforced in driver
+  code because it cannot be expressed in the generic clock-node or clock-state
+  bindings.
+
+compatible: "infineon,cat1-clk-hf"
+
+include: [clock-node.yaml]
+
+properties:
+  input:
+    type: phandle
+    required: true
+    description: Upstream clock (path mux) feeding this clk_hf instance.
+
+  instance:
+    type: int
+    required: true
+    description: clk_hf index programmed by this node.
+
+  source-path:
+    type: int
+    required: true
+    description: |
+      Clock path selected as the clk_hf source
+      (IFX_CLK_HF_IN_CLKPATH* from dt-bindings/clock/ifx_clock_source_common.h).
+
+  clock-div:
+    type: int
+    default: 0
+    description: |
+      Default divider selector (IFX_CLK_HF_* ; divide factor = value + 1).
+      Used until a clock-state applies a new value through the specifier cell.
+
+  max-frequency:
+    type: int
+    description: |
+      Optional legal maximum output frequency in Hz. When set, the driver
+      rejects a configuration whose output would exceed it.
+
+  # Register-direct backend only (ignored by the PDL backend):
+  reg-addr:
+    type: int
+    description: Absolute address of the CLK_ROOT_SELECT register for this clk_hf.
+
+  mux-lsb:
+    type: int
+    description: Least-significant bit of the source-select (ROOT_MUX) field.
+
+  mux-width:
+    type: int
+    description: Width in bits of the source-select field.
+
+  div-lsb:
+    type: int
+    description: |
+      Least-significant bit of the integer-divider field. Set to the
+      ROOT_DIV_INT position on SRSS layouts that provide it, or the ROOT_DIV
+      position on layouts that do not; this is why the position is a property.
+
+  div-width:
+    type: int
+    description: Width in bits of the integer-divider field.
+
+  enable-bit:
+    type: int
+    description: Bit position of the clock-root enable.
+
+  "#clock-cells":
+    const: 1
+
+clock-cells:
+  - divider

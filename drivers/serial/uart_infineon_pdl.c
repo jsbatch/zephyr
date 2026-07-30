@@ -29,7 +29,12 @@
 #include <cy_sysclk.h>
 
 #include <zephyr/drivers/clock_control/clock_control_ifx_cat1.h>
+#include <zephyr/drivers/clock_control/ifx_cat1_clock_management_glue.h>
 #include <zephyr/dt-bindings/clock/ifx_clock_source_common.h>
+
+#if defined(CONFIG_UART_INFINEON_CLOCK_MANAGEMENT)
+#include <zephyr/drivers/clock_management.h>
+#endif
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(uart_ifx, CONFIG_UART_LOG_LEVEL);
@@ -134,6 +139,16 @@ struct ifx_cat1_uart_config {
 	uint16_t irq_num;
 	uint8_t irq_priority;
 	en_clk_dst_t clk_dst;
+#if defined(CONFIG_UART_INFINEON_CLOCK_MANAGEMENT)
+	/*
+	 * Clock-management view of the shared upstream clock (clk_hf). The
+	 * driver still owns its leaf peripheral divider through "clk_dst"
+	 * above; clock management owns the source clock this reads and brings
+	 * up. This is the producer/consumer ownership boundary.
+	 */
+	const struct clock_output *clk;
+	clock_management_state_t clk_state;
+#endif
 };
 
 typedef void (*ifx_cat1_uart_event_callback_t)(void *callback_arg);
@@ -228,16 +243,28 @@ cy_rslt_t ifx_cat1_uart_set_baud(const struct device *dev, uint32_t baudrate)
 
 	Cy_SCB_UART_Disable(config->reg_addr, NULL);
 
-#if defined(COMPONENT_CAT1A)
-	peri_frequency = Cy_SysClk_ClkPeriGetFrequency();
-#elif defined(COMPONENT_CAT1B) || defined(COMPONENT_CAT1C) ||                                      \
-	defined(CONFIG_SOC_FAMILY_INFINEON_EDGE)
-	uint8_t hfclk = ifx_cat1_utils_peri_pclk_get_hfclk(data->clock_peri_group);
-
-	peri_frequency = Cy_SysClk_ClkHfGetFrequency(hfclk);
+	/*
+	 * Source-clock rate for the baud-divider math. A converted driver reads
+	 * it from clock management; otherwise it comes from the PDL. The
+	 * peripheral group is consulted only on the PDL path.
+	 */
+#if defined(CONFIG_UART_INFINEON_CLOCK_MANAGEMENT)
+	const struct clock_output *src_clk = config->clk;
 #else
-	peri_frequency = Cy_SysClk_ClkHfGetFrequency();
+	const struct clock_output *src_clk = NULL;
 #endif
+#if defined(COMPONENT_CAT1B) || defined(COMPONENT_CAT1C) || defined(CONFIG_SOC_FAMILY_INFINEON_EDGE)
+	uint8_t src_group = data->clock_peri_group;
+#else
+	uint8_t src_group = 0U;
+#endif
+	int src_rate = ifx_cat1_periph_source_rate(src_clk, src_group);
+
+	if (src_rate < 0) {
+		return (cy_rslt_t)src_rate;
+	}
+	peri_frequency = (uint32_t)src_rate;
+
 	for (uint8_t i = IFX_UART_OVERSAMPLE_MIN; i < IFX_UART_OVERSAMPLE_MAX + 1; i++) {
 		uint32_t tmp_divider = ((peri_frequency + ((baudrate * i) / 2))) / (baudrate * i);
 
@@ -1260,6 +1287,21 @@ static int ifx_cat1_uart_init(const struct device *dev)
 		return ret;
 	}
 
+#if defined(CONFIG_UART_INFINEON_CLOCK_MANAGEMENT)
+	/*
+	 * Bring up the shared source clock (path mux, DPLL, clk_hf) before the
+	 * peripheral divider is assigned and the baud rate is derived. Only a
+	 * converted instance has a clock-management output; others are left to
+	 * the PDL source-rate read.
+	 */
+	if (config->clk != NULL) {
+		ret = clock_management_apply_state(config->clk, config->clk_state);
+		if (ret < 0) {
+			return ret;
+		}
+	}
+#endif
+
 	data->scb_config = _uart_default_config;
 #ifdef CONFIG_UART_ASYNC_API
 	data->scb_config.rxFifoTriggerLevel = 0;
@@ -1348,6 +1390,22 @@ static int ifx_cat1_uart_init(const struct device *dev)
 	k_work_init_delayable(&data->async.dma_tx.timeout_work, ifx_cat1_uart_async_tx_timeout);
 	k_work_init_delayable(&data->async.dma_rx.timeout_work, ifx_cat1_uart_async_rx_timeout);
 #endif /* CONFIG_UART_ASYNC_API */
+
+#if defined(CONFIG_UART_INFINEON_CLOCK_MANAGEMENT)
+	/*
+	 * Register this driver as a user of its source clock so the clock is
+	 * not gated while the UART is running. Taking the reference only once
+	 * initialisation has succeeded means a failure part-way through leaves
+	 * no reference behind. -ENOSYS means a clock on the path implements no
+	 * on_off and so cannot be gated, which is not a failure.
+	 */
+	if ((ret == 0) && (config->clk != NULL)) {
+		ret = clock_management_on(config->clk);
+		if (ret == -ENOSYS) {
+			ret = 0;
+		}
+	}
+#endif
 
 	return ret;
 }
@@ -1473,9 +1531,29 @@ static DEVICE_API(uart, ifx_cat1_uart_driver_api) = {
 	PERI_INFO(n)
 #endif
 
+#if defined(CONFIG_UART_INFINEON_CLOCK_MANAGEMENT)
+/*
+ * A UART instance is converted to clock management only when it declares
+ * clock-outputs. Other enabled instances leave clk NULL and fall back to the
+ * PDL source-rate read, so converting the console does not force every instance
+ * onto clock management.
+ */
+#define UART_CM_OUTPUT_DEFINE(n)                                                                   \
+	IF_ENABLED(DT_INST_NODE_HAS_PROP(n, clock_outputs),                                        \
+		   (CLOCK_MANAGEMENT_DT_INST_DEFINE_OUTPUT_BY_IDX(n, 0);))
+#define UART_CM_CONFIG_INIT(n)                                                                     \
+	IF_ENABLED(DT_INST_NODE_HAS_PROP(n, clock_outputs),                                        \
+		   (.clk = CLOCK_MANAGEMENT_DT_INST_GET_OUTPUT_BY_IDX(n, 0),                       \
+		    .clk_state = CLOCK_MANAGEMENT_DT_INST_GET_STATE(n, periclk, default),))
+#else
+#define UART_CM_OUTPUT_DEFINE(n)
+#define UART_CM_CONFIG_INIT(n)
+#endif
+
 #define INFINEON_CAT1_UART_INIT(n)                                                                 \
 	PINCTRL_DT_INST_DEFINE(n);                                                                 \
 	INTERRUPT_DRIVEN_UART_INIT(n)                                                              \
+	UART_CM_OUTPUT_DEFINE(n)                                                                   \
 	static struct ifx_cat1_uart_data ifx_cat1_uart##n##_data = {                               \
 		UART_PERI_CLOCK_INIT(n) UART_DMA_CHANNEL(n, tx, MEMORY_TO_PERIPHERAL, 1, 1)        \
 			UART_DMA_CHANNEL(n, rx, PERIPHERAL_TO_MEMORY, 1, 1)};                      \
@@ -1495,6 +1573,7 @@ static DEVICE_API(uart, ifx_cat1_uart_driver_api) = {
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),                                         \
 		.reg_addr = (CySCB_Type *)DT_INST_REG_ADDR(n),                                     \
 		.clk_dst = DT_INST_PROP(n, clk_dst),                                               \
+		UART_CM_CONFIG_INIT(n)                                                             \
 		IRQ_INFO(n)};                                                                      \
                                                                                                    \
 	DEVICE_DT_INST_DEFINE(n, &ifx_cat1_uart_init##n, NULL, &ifx_cat1_uart##n##_data,           \

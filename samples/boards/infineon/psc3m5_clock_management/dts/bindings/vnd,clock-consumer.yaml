@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+# or an affiliate of Infineon Technologies AG. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Prototype clock-management consumer. Carries the clock-outputs and
+  clock-state-N properties used by the sample to apply and query states
+  through the clock-management API.
+
+compatible: "vnd,clock-consumer"
+
+include: [base.yaml, clock-device.yaml]
