@@ -25,13 +25,24 @@
 #define DT_DRV_COMPAT infineon_cat1_peri_div
 
 struct ifx_cat1_peri_div_data {
+	/* Parent handle from the "input" phandle; must stay the first member. */
 	STANDARD_CLK_SUBSYS_DATA_DEFINE
-	struct ifx_cat1_clock clock;
-	uint16_t divider;
-	uint8_t frac_divider;
-	uint8_t div_type;
+	struct ifx_cat1_clock clock; /* Peripheral-group and channel identity. */
+	uint16_t divider;      /* Encoded integer divider; divide factor is divider + 1. */
+	uint8_t frac_divider;  /* Fractional remainder in 1/32 steps. */
+	uint8_t div_type;      /* CY_SYSCLK_DIV_*; selects integer or fractional programming. */
 };
 
+/**
+ * @brief Build the peripheral-clock destination selector for this channel.
+ *
+ * Only SoC families whose peripheral clock is addressed by group and instance
+ * need a composed value; the rest address the divider directly.
+ *
+ * @param data Divider state carrying the group and instance identity.
+ *
+ * @return Destination selector for the peripheral-clock helpers.
+ */
 static en_clk_dst_t ifx_cat1_peri_div_dst(const struct ifx_cat1_peri_div_data *data)
 {
 	en_clk_dst_t clk_dst = 0;
@@ -44,8 +55,17 @@ static en_clk_dst_t ifx_cat1_peri_div_dst(const struct ifx_cat1_peri_div_data *d
 	ARG_UNUSED(data);
 #endif
 	return clk_dst;
-}
+} /* ifx_cat1_peri_div_dst() */
 
+/**
+ * @brief Compute this divider's output from its parent rate.
+ *
+ * @param clk_hw      Clock object for this peripheral divider.
+ * @param parent_rate Rate arriving from the peripheral clock root.
+ *
+ * @retval -EINVAL if both divider parts are zero.
+ * @return Output rate in Hz otherwise.
+ */
 static clock_freq_t ifx_cat1_peri_div_recalc_rate(const struct clk *clk_hw,
 						  clock_freq_t parent_rate)
 {
@@ -58,8 +78,18 @@ static clock_freq_t ifx_cat1_peri_div_recalc_rate(const struct clk *clk_hw,
 
 	/* Fractional dividers carry the fraction in 1/32 steps. */
 	return (clock_freq_t)(((uint64_t)parent_rate << 5) / scaled);
-}
+} /* ifx_cat1_peri_div_recalc_rate() */
 
+/**
+ * @brief Program and enable this peripheral divider.
+ *
+ * @param clk_hw Clock object for this peripheral divider.
+ * @param cfg    One-based divide value, passed as an integer-valued pointer.
+ *
+ * @retval 0 on success.
+ * @retval -EINVAL if the requested divide value is zero.
+ * @retval -EIO if a peripheral-clock helper rejects the request.
+ */
 static int ifx_cat1_peri_div_configure(const struct clk *clk_hw, const void *cfg)
 {
 	struct ifx_cat1_peri_div_data *data = clk_hw->hw_data;
@@ -91,9 +121,19 @@ static int ifx_cat1_peri_div_configure(const struct clk *clk_hw, const void *cfg
 	data->divider = (uint16_t)divider;
 
 	return 0;
-}
+} /* ifx_cat1_peri_div_configure() */
 
 #if defined(CONFIG_CLOCK_MANAGEMENT_RUNTIME)
+/**
+ * @brief Predict the output a pending divide value would produce.
+ *
+ * @param clk_hw      Clock object for this peripheral divider.
+ * @param cfg         One-based divide value, passed as an integer-valued pointer.
+ * @param parent_rate Rate arriving from the peripheral clock root.
+ *
+ * @retval -EINVAL if both divider parts would be zero.
+ * @return Rate the divider would output otherwise.
+ */
 static clock_freq_t ifx_cat1_peri_div_configure_recalc(const struct clk *clk_hw, const void *cfg,
 						       clock_freq_t parent_rate)
 {
@@ -106,10 +146,23 @@ static clock_freq_t ifx_cat1_peri_div_configure_recalc(const struct clk *clk_hw,
 	}
 
 	return (clock_freq_t)(((uint64_t)parent_rate << 5) / scaled);
-}
+} /* ifx_cat1_peri_div_configure_recalc() */
 #endif
 
 #if defined(CONFIG_CLOCK_MANAGEMENT_SET_RATE)
+/**
+ * @brief Find the closest achievable rate, optionally applying it.
+ *
+ * Integer division only; the fractional part is left as configured.
+ *
+ * @param clk_hw      Clock object for this peripheral divider.
+ * @param rate_req    Requested output rate in Hz.
+ * @param parent_rate Rate arriving from the peripheral clock root.
+ * @param commit      Program the divider when true; only evaluate when false.
+ *
+ * @retval -EINVAL if the requested rate is not positive.
+ * @return Achievable rate in Hz, or an error from the programming step.
+ */
 static clock_freq_t ifx_cat1_peri_div_best_rate(const struct clk *clk_hw, clock_freq_t rate_req,
 						clock_freq_t parent_rate, bool commit)
 {
@@ -130,7 +183,7 @@ static clock_freq_t ifx_cat1_peri_div_best_rate(const struct clk *clk_hw, clock_
 	}
 
 	return parent_rate / divider;
-}
+} /* ifx_cat1_peri_div_best_rate() */
 #endif
 
 const struct clock_management_standard_api ifx_cat1_peri_div_api = {

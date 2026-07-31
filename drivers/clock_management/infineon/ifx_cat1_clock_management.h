@@ -5,6 +5,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/**
+ * @file
+ * @brief Specifier-data hooks for the Infineon CAT1 clock-management producers.
+ *
+ * Shared by both producer backends. Registered with the framework through
+ * add_clock_management_header_ifdef() so every devicetree specifier cell
+ * reaches the producer that consumes it.
+ */
+
 #ifndef ZEPHYR_DRIVERS_CLOCK_MANAGEMENT_INFINEON_IFX_CAT1_CLOCK_MANAGEMENT_H_
 #define ZEPHYR_DRIVERS_CLOCK_MANAGEMENT_INFINEON_IFX_CAT1_CLOCK_MANAGEMENT_H_
 

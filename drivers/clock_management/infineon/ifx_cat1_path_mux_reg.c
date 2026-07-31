@@ -22,13 +22,29 @@
 #define DT_DRV_COMPAT infineon_cat1_path_mux
 
 struct ifx_cat1_path_mux_reg_config {
+	/* Parent array and count; must stay the first member. */
 	MUX_CLK_SUBSYS_DATA_DEFINE
+	/*
+	 * Hardware source value per input, parallel to the parent array. The
+	 * framework works in zero-based indices, the hardware does not, so this
+	 * table is the translation between them.
+	 */
 	const uint32_t *source_selects;
-	mem_addr_t reg;
-	uint8_t field_lsb;
-	uint8_t field_width;
+	mem_addr_t reg;      /* Path-select register for this CLK_PATH. */
+	uint8_t field_lsb;   /* PATH_MUX field position. */
+	uint8_t field_width; /* PATH_MUX field width. */
 };
 
+/**
+ * @brief Select a path-mux input by framework index.
+ *
+ * @param clk_hw Clock object for this path mux.
+ * @param mux    Input-sources index, passed as an integer-valued pointer.
+ *
+ * @retval 0 on success.
+ * @retval -EINVAL if the index is out of range.
+ * @retval -ENOTCONN if the selected input is not populated on this board.
+ */
 static int ifx_cat1_path_mux_configure(const struct clk *clk_hw, const void *mux)
 {
 	const struct ifx_cat1_path_mux_reg_config *config = clk_hw->hw_data;
@@ -46,12 +62,25 @@ static int ifx_cat1_path_mux_configure(const struct clk *clk_hw, const void *mux
 		return -ENOTCONN;
 	}
 
+	/*
+	 * Switching away from the current source needs four cycles of it, and
+	 * that source must not be gated until they have elapsed (Architecture
+	 * TRM Table 110). Nothing here enforces the delay.
+	 */
 	ifx_cat1_reg_field_set(config->reg, config->field_lsb, config->field_width,
 			       config->source_selects[idx]);
 
 	return 0;
-}
+} /* ifx_cat1_path_mux_configure() */
 
+/**
+ * @brief Report which input the hardware currently selects.
+ *
+ * @param clk_hw Clock object for this path mux.
+ *
+ * @return Input-sources index, or -ENOTCONN if the hardware selects a value
+ *         this node does not list or an input the board does not populate.
+ */
 static int ifx_cat1_path_mux_get_parent(const struct clk *clk_hw)
 {
 	const struct ifx_cat1_path_mux_reg_config *config = clk_hw->hw_data;
@@ -69,17 +98,35 @@ static int ifx_cat1_path_mux_get_parent(const struct clk *clk_hw)
 	}
 
 	return -ENOTCONN;
-}
+} /* ifx_cat1_path_mux_get_parent() */
 
 #if defined(CONFIG_CLOCK_MANAGEMENT_RUNTIME)
+/**
+ * @brief Validate a pending selection without touching hardware.
+ *
+ * @param clk_hw Clock object for this path mux.
+ * @param mux    Input-sources index, passed as an integer-valued pointer.
+ *
+ * @return 0 if the index is selectable, negative errno otherwise.
+ */
 static int ifx_cat1_path_mux_configure_recalc(const struct clk *clk_hw, const void *mux)
 {
 	const struct ifx_cat1_path_mux_reg_config *config = clk_hw->hw_data;
 
 	return clock_management_mux_validate_parent(config->parent_cnt,
 						    (uint32_t)(uintptr_t)mux);
-}
+} /* ifx_cat1_path_mux_configure_recalc() */
 
+/**
+ * @brief Reject a reparent onto an input the board does not populate.
+ *
+ * @param clk_hw      Clock object for this path mux.
+ * @param parent_freq Candidate parent rate; not used, selection is index-based.
+ * @param new_idx     Proposed input-sources index.
+ *
+ * @retval -ENOTCONN if the proposed input has no clock object.
+ * @return Otherwise the framework's own range check.
+ */
 static int ifx_cat1_path_mux_validate_parent(const struct clk *clk_hw,
 					     clock_freq_t parent_freq, uint8_t new_idx)
 {
@@ -91,14 +138,22 @@ static int ifx_cat1_path_mux_validate_parent(const struct clk *clk_hw,
 	}
 
 	return clock_management_mux_validate_parent(config->parent_cnt, (uint32_t)new_idx);
-}
+} /* ifx_cat1_path_mux_validate_parent() */
 #endif
 
 #if defined(CONFIG_CLOCK_MANAGEMENT_SET_RATE)
+/**
+ * @brief Reparent the mux at runtime.
+ *
+ * @param clk_hw  Clock object for this path mux.
+ * @param new_idx Input-sources index to select.
+ *
+ * @return 0 on success, negative errno otherwise.
+ */
 static int ifx_cat1_path_mux_set_parent(const struct clk *clk_hw, uint8_t new_idx)
 {
 	return ifx_cat1_path_mux_configure(clk_hw, (const void *)(uintptr_t)new_idx);
-}
+} /* ifx_cat1_path_mux_set_parent() */
 #endif
 
 const struct clock_management_mux_api ifx_cat1_path_mux_api = {

@@ -28,15 +28,25 @@
 LOG_MODULE_REGISTER(ifx_cat1_dpll, CONFIG_CLOCK_MANAGEMENT_LOG_LEVEL);
 
 struct ifx_cat1_dpll_data {
+	/* Parent handle from the "input" phandle; must stay the first member. */
 	STANDARD_CLK_SUBSYS_DATA_DEFINE
-	uint16_t feedback_div;
-	uint8_t reference_div;
-	uint8_t output_div;
-	uint32_t fraction_div;
-	uint8_t instance;
-	bool dco_mode;
+	uint16_t feedback_div; /* Integer part of the feedback multiplier. */
+	uint8_t reference_div; /* Input reference divider. */
+	uint8_t output_div;    /* Post-VCO output divider. */
+	uint32_t fraction_div; /* Fractional feedback numerator, scaled by 2^24. */
+	uint8_t instance;      /* DPLL_LP index, selects which SRSS path is programmed. */
+	bool dco_mode;         /* Run the DCO open-loop instead of locking the DPLL. */
 };
 
+/**
+ * @brief Compute the DPLL output from its reference rate.
+ *
+ * @param clk_hw      Clock object for this DPLL.
+ * @param parent_rate Reference rate arriving from the clock path.
+ *
+ * @retval -EINVAL if a divider is zero, which would divide by zero.
+ * @return Output rate in Hz otherwise.
+ */
 static clock_freq_t ifx_cat1_dpll_recalc_rate(const struct clk *clk_hw, clock_freq_t parent_rate)
 {
 	const struct ifx_cat1_dpll_data *data = clk_hw->hw_data;
@@ -53,15 +63,30 @@ static clock_freq_t ifx_cat1_dpll_recalc_rate(const struct clk *clk_hw, clock_fr
 	den = (uint32_t)data->reference_div * data->output_div;
 
 	return (clock_freq_t)(num / den);
-}
+} /* ifx_cat1_dpll_recalc_rate() */
 
 #if defined(CONFIG_SOC_SERIES_PSC3)
+/**
+ * @brief Apply the validated DPLL_LP configuration to hardware.
+ *
+ * Returns success without touching the hardware when the PLL is already
+ * enabled. Re-applying a state that a running consumer depends on would
+ * otherwise take its clock away mid-flight.
+ *
+ * @param data Divider and mode settings for this DPLL.
+ *
+ * @retval 0 on success, or when the PLL was already running.
+ * @retval -EIO if configuration or lock fails.
+ */
 static int ifx_cat1_dpll_program(const struct ifx_cat1_dpll_data *data)
 {
 	/*
-	 * Validated DPLL_LP configuration. The divider fields come from
-	 * devicetree; the remaining fields are the silicon-validated trim/loop
-	 * constants and must not be re-derived.
+	 * Divider fields come from devicetree; the trim and loop constants below
+	 * are the silicon-validated values and must not be re-derived.
+	 *
+	 * The vendor programming sequence is retained because enabling waits on
+	 * the DPLL lock bit with a timeout, which is the one step here that is
+	 * not a plain register write.
 	 */
 	cy_stc_dpll_lp_config_t lp_config = {
 		.feedbackDiv = data->feedback_div,
@@ -106,16 +131,31 @@ static int ifx_cat1_dpll_program(const struct ifx_cat1_dpll_data *data)
 	}
 
 	return 0;
-}
+} /* ifx_cat1_dpll_program() */
 #else
+/**
+ * @brief Reject DPLL programming on SoC series without a validated sequence.
+ *
+ * @param data Divider and mode settings; unused.
+ *
+ * @return -ENOTSUP always.
+ */
 static int ifx_cat1_dpll_program(const struct ifx_cat1_dpll_data *data)
 {
 	ARG_UNUSED(data);
 
 	return -ENOTSUP;
-}
+} /* ifx_cat1_dpll_program() */
 #endif
 
+/**
+ * @brief Program the DPLL from its devicetree dividers.
+ *
+ * @param clk_hw Clock object for this DPLL.
+ * @param cfg    Specifier payload; unused, all settings come from devicetree.
+ *
+ * @return 0 on success, negative errno otherwise.
+ */
 static int ifx_cat1_dpll_configure(const struct clk *clk_hw, const void *cfg)
 {
 	const struct ifx_cat1_dpll_data *data = clk_hw->hw_data;
@@ -129,16 +169,27 @@ static int ifx_cat1_dpll_configure(const struct clk *clk_hw, const void *cfg)
 	}
 
 	return ret;
-}
+} /* ifx_cat1_dpll_configure() */
 
 #if defined(CONFIG_CLOCK_MANAGEMENT_RUNTIME)
+/**
+ * @brief Report the rate a pending configuration would produce.
+ *
+ * The dividers are fixed in devicetree, so this matches the current rate.
+ *
+ * @param clk_hw      Clock object for this DPLL.
+ * @param cfg         Specifier payload; unused.
+ * @param parent_rate Reference rate arriving from the clock path.
+ *
+ * @return Output rate in Hz.
+ */
 static clock_freq_t ifx_cat1_dpll_configure_recalc(const struct clk *clk_hw, const void *cfg,
 						   clock_freq_t parent_rate)
 {
 	ARG_UNUSED(cfg);
 
 	return ifx_cat1_dpll_recalc_rate(clk_hw, parent_rate);
-}
+} /* ifx_cat1_dpll_configure_recalc() */
 #endif
 
 const struct clock_management_standard_api ifx_cat1_dpll_api = {

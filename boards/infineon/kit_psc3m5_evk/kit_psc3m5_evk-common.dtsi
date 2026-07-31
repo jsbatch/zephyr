@@ -91,9 +91,11 @@ uart3: &scb3 {
 	clocks = <&peri0_group4_8bit_0>;
 
 	/*
-	 * Shared source clock (clk_hf2) owned by the clock-management framework.
-	 * The driver applies the default state to bring up path_mux2 -> dpll_lp1
-	 * -> clk_hf2 and reads the resulting rate through clock management.
+	 * Source clock (clk_hf2), owned by the clock-management framework. The
+	 * "clock-outputs" name is the framework's: it names an output of the
+	 * clock tree, which is this peripheral's input. The driver applies the
+	 * default state to bring up path_mux2 -> dpll_lp1 -> clk_hf2 and reads
+	 * the resulting rate through clock management.
 	 */
 	clock-outputs = <&clk_hf2_output>;
 	clock-output-names = "periclk";
