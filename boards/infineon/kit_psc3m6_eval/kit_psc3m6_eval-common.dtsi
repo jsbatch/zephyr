@@ -151,6 +151,32 @@ uart4: &scb4 {
 	clock-div = <1>;
 };
 
+/*
+ * P9.0 (SCL) and P9.2 (SDA) carry the kit's I2C bus to the Arduino header
+ * (KIT_PSC3M6_EVAL user guide, Table 3 and Figure 19).
+ *
+ * The I2C driver reprograms its divider at init, so SCB0 takes a divider
+ * no other board peripheral uses.
+ */
+i2c0: &scb0 {
+	compatible = "infineon,i2c";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	clocks = <&peri0_group4_16_5bit_1>;
+
+	pinctrl-0 = <&p9_0_scb0_i2c_scl &p9_2_scb0_i2c_sda>;
+	pinctrl-names = "default";
+};
+
+&peri0_group4_16_5bit_1 {
+	status = "okay";
+	clock-div = <10>;
+};
+
 &watchdog0 {
 	status = "okay";
 };
+
+#include "arduino_r3_connector.dtsi"

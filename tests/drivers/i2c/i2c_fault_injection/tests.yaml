@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+common:
+  depends_on: i2c
+  tags:
+    - drivers
+    - i2c
+  filter: dt_alias_exists("i2c-dut")
+  harness: ztest
+
+tests:
+  # Tier 0. One I2C controller and nothing else. The conditions that need
+  # wiring skip at run time, so this scenario is safe to enable on any board
+  # that declares the i2c-dut alias.
+  drivers.i2c.fault_injection.basic: {}
+
+  # Tier 1. Two spare GPIOs jumpered to the controller's own SDA and SCL,
+  # declared as sda-gpios and scl-gpios under the zephyr,user node. Adds the
+  # bus hang, recovery and clock-hold conditions, and reaches every driver in
+  # the tree rather than only those with target mode.
+  drivers.i2c.fault_injection.bus_fault:
+    harness_config:
+      fixture: i2c_bus_fault
+    extra_configs:
+      - CONFIG_I2C_FAULT_TEST_BUS_FAULT_WIRED=y
+
+  # Tier 2. A second controller with its SDA and SCL shorted to the first,
+  # carrying a zephyr,i2c-target-fault node. Adds the data-phase,
+  # target-driven stretch, state-integrity and contention conditions.
+  drivers.i2c.fault_injection.bus_short:
+    filter: dt_alias_exists("i2c-dut") and
+      dt_compat_enabled("zephyr,i2c-target-fault")
+    harness_config:
+      fixture: i2c_bus_short
+
+  # Tier 1 and tier 2 wired together. Adds gated two-controller arbitration,
+  # which closes the bus through the forcing GPIOs and needs a second
+  # controller to contend with.
+  drivers.i2c.fault_injection.bus_short_fault:
+    filter: dt_alias_exists("i2c-dut") and
+      dt_compat_enabled("zephyr,i2c-target-fault")
+    harness_config:
+      fixture:
+        - i2c_bus_fault
+        - i2c_bus_short
+    extra_configs:
+      - CONFIG_I2C_FAULT_TEST_BUS_FAULT_WIRED=y
+
+  # Tier 2 with the asynchronous transfer path enabled.
+  drivers.i2c.fault_injection.bus_short.callback:
+    filter: dt_alias_exists("i2c-dut") and
+      dt_compat_enabled("zephyr,i2c-target-fault")
+    harness_config:
+      fixture: i2c_bus_short
+    extra_configs:
+      - CONFIG_I2C_CALLBACK=y
+
+  # Tier 2 with the RTIO transfer path enabled.
+  drivers.i2c.fault_injection.bus_short.rtio:
+    filter: dt_alias_exists("i2c-dut") and
+      dt_compat_enabled("zephyr,i2c-target-fault")
+    harness_config:
+      fixture: i2c_bus_short
+    extra_configs:
+      - CONFIG_I2C_RTIO=y
+      - CONFIG_ZTEST_THREAD_PRIORITY=2
+
+  # Runs the API-misuse conditions whose outcome is only defined under
+  # userspace, where the syscall handler validates caller buffers.
+  drivers.i2c.fault_injection.userspace:
+    filter: dt_alias_exists("i2c-dut") and CONFIG_ARCH_HAS_USERSPACE
+    extra_configs:
+      - CONFIG_USERSPACE=y
+
+  # Accepts any negative errno rather than the documented -EIO, for bringing
+  # up a driver that is not yet conformant. Not a substitute for the strict
+  # scenarios above.
+  drivers.i2c.fault_injection.relaxed_errno:
+    extra_configs:
+      - CONFIG_I2C_FAULT_TEST_RELAXED_ERRNO=y

@@ -15,7 +15,12 @@ toolchain:
 supported:
   - can
   - gpio
+  - i2c
   - uart
+  - arduino_gpio
+  - arduino_i2c
+  - arduino_serial
+  - arduino_spi
   - clock_control
   - pinctrl
   - rtc

@@ -102,6 +102,10 @@
 	status = "okay";
 };
 
+&gpio_prt9 {
+	status = "okay";
+};
+
 uart3: &scb3 {
 	compatible = "infineon,uart";
 	status = "okay";
@@ -116,6 +120,31 @@ uart3: &scb3 {
 &peri0_group4_8bit_0 {
 	status = "okay";
 	clock-div = <86>;
+};
+
+/*
+ * P9.0 and P9.2 carry the kit's I2C bus, shared by the Arduino, mikroBUS,
+ * Shield2Go and expansion headers and by the KitProg3 USB-I2C bridge
+ * (KIT_PSC3M5_EVK user guide, Table 3).
+ *
+ * The I2C driver reprograms its divider at init, so SCB0 takes a divider
+ * no other board or test peripheral uses.
+ */
+i2c0: &scb0 {
+	compatible = "infineon,i2c";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	clocks = <&peri0_group4_16_5bit_1>;
+
+	pinctrl-0 = <&p9_0_scb0_i2c_scl &p9_2_scb0_i2c_sda>;
+	pinctrl-names = "default";
+};
+
+&peri0_group4_16_5bit_1 {
+	status = "okay";
+	clock-div = <10>;
 };
 
 &peri0_group4_16_5bit_0 {
@@ -320,3 +349,5 @@ uart3: &scb3 {
 	positive-input = "ain-pa";
 	negative-input = "dac";
 };
+
+#include "arduino_r3_connector.dtsi"

@@ -1,0 +1,231 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "I2C fault injection test"
+
+config I2C_FAULT_TEST_ABSENT_ADDR
+	hex "7-bit address that nothing on the bus answers"
+	default 0x00
+	range 0x00 0x77
+	help
+	  Address the address-phase conditions transfer to. The default of
+	  0x00 is a sentinel meaning "discover one at run time", which scans
+	  0x08 through 0x77 and takes the first address that does not answer.
+
+	  Set a value to pin the address instead, which is useful where
+	  probing would disturb a device on the bus or where the startup time
+	  of the scan matters. Whichever source supplies it, the suite
+	  verifies the address is silent before trusting it and fails setup
+	  naming it if it answers.
+
+	  This is deliberately not a devicetree property. Devicetree
+	  describes what is present on a bus, and this is by definition what
+	  is absent.
+
+config I2C_FAULT_TEST_PRESENT_ADDR
+	hex "7-bit address used for the known-good transfers"
+	default 0x00
+	range 0x00 0x77
+	help
+	  Address the suite transfers to when it needs to show that the bus
+	  still works. The default of 0x00 means "discover one at run time",
+	  which prefers the fault target where one is present and otherwise
+	  takes the first address that answers.
+
+	  Only the zero-length probe is ever sent to a discovered address, so
+	  an unknown device on the bus is not written to.
+
+config I2C_FAULT_TEST_ABSENT_ADDR_10BIT
+	hex "10-bit address that nothing on the bus answers"
+	default 0x2AA
+	range 0x000 0x3FF
+	help
+	  Address used by the 10-bit addressing condition. The 10-bit space
+	  is effectively unpopulated in practice, so a fixed default is
+	  defensible here; it is validated by the same probe before use.
+
+config I2C_FAULT_TEST_BUS_FAULT_WIRED
+	bool "The line-forcing GPIOs are physically jumpered to the bus"
+	help
+	  Declares that the pins named by sda-gpios and scl-gpios under the
+	  zephyr,user node are wired to the controller's own SDA and SCL
+	  nets. Set by the twister scenario carrying the i2c_bus_fault
+	  fixture.
+
+	  A devicetree property says which pins would be used, not that a
+	  jumper is fitted. Without this the hang, recovery and clock-hold
+	  conditions skip, because running them against disconnected pins
+	  produces failures indistinguishable from driver defects.
+
+config I2C_FAULT_TEST_MAX_BUS_TIMEOUTS
+	int "Consecutive transfer timeouts before the bus is judged broken"
+	default 3
+	range 1 100
+	help
+	  A NACK is an answer and costs nothing. A timeout means the transfer
+	  never completed, which is a wiring or bus fault rather than a
+	  property of the address, and each one costs
+	  CONFIG_I2C_TRANSFER_TIMEOUT_MS.
+
+	  After this many in a row the suite stops probing and skips the
+	  remaining conditions, rather than spending that timeout on every
+	  address and every test and reporting results that cannot mean
+	  anything.
+
+config I2C_FAULT_TEST_RELAXED_ERRNO
+	bool "Accept any negative errno from a failed transfer"
+	help
+	  The I2C API documents -EIO for a failed transfer and the existing
+	  upstream suites assert that exact value, so it is what this suite
+	  requires by default. Enable this to accept any negative value
+	  instead, which is useful when bringing up a driver that is not yet
+	  conformant. In both modes the value each driver returned is logged
+	  per fault class.
+
+config I2C_FAULT_TEST_TIMING_ASSERT
+	bool "Fail the run on a timing measurement outside its bounds"
+	help
+	  Timing measurements are diagnostic by default: they are printed
+	  with their expected range and a value outside it is marked in the
+	  log but does not fail the run. Enable this to turn them into
+	  assertions, which is appropriate when characterising one known
+	  board rather than running across many.
+
+config I2C_FAULT_TEST_UNSAFE_API_MISUSE
+	bool "Run the API misuse conditions that may fault the CPU"
+	help
+	  Enables the condition that passes a NULL buffer with a non-zero
+	  length. Outside userspace the I2C API performs no validation on
+	  that path, so a driver is free to dereference the pointer or hand
+	  it to a DMA engine, which can fault the CPU and end the run rather
+	  than report a result. Off by default for that reason.
+
+config I2C_FAULT_TEST_TIMEOUT_MS
+	int "Upper bound in milliseconds for a single faulted transfer"
+	default 2000
+	range 100 30000
+	help
+	  A transfer that meets a fault must still return within this bound.
+	  Transfers run on a worker thread that the test thread waits on with
+	  this timeout, so a driver that never returns is reported as a hang
+	  rather than exhausting the twister timeout, which is
+	  indistinguishable from a build or flash problem.
+
+config I2C_FAULT_TEST_WORKER_STACK_SIZE
+	int "Stack size in bytes for the bounded-transfer worker thread"
+	default 2048
+	range 512 8192
+	help
+	  Stack for the thread that faulted transfers run on. It calls
+	  nothing deeper than the I2C driver, so the default is generous for
+	  most platforms.
+
+config I2C_FAULT_TEST_PAYLOAD_LEN
+	int "Bytes transferred by the data-phase conditions"
+	default 8
+	range 4 64
+	help
+	  Length of the transfers the data-phase conditions use. It must be
+	  at least four so that a fault can be placed at the first byte, at a
+	  middle byte and at the last byte and land on three distinct
+	  positions. It must not exceed the size of the fault target buffer.
+
+config I2C_FAULT_TEST_LONG_PAYLOAD_LEN
+	int "Bytes transferred by the timing and contention conditions"
+	default 32
+	range 8 256
+	help
+	  Length of the transfers used to measure the bus rate and to hold
+	  the bus long enough for a second controller to attempt one of its
+	  own. Longer is more accurate for the timing measurements and gives
+	  a wider contention window, at the cost of run time.
+
+config I2C_FAULT_TEST_REPEAT_COUNT
+	int "Attempts made by the repeated-fault conditions"
+	default 5
+	range 2 100
+	help
+	  Number of times a fault is repeated when checking that a driver
+	  does not latch state from the first failure.
+
+config I2C_FAULT_TEST_CONTENTION_ROUNDS
+	int "Rounds run by the two-controller contention condition"
+	default 100
+	range 10 1000
+	help
+	  Number of times two controllers are released onto the bus together
+	  to contend for it. Rounds where the two happen to run one after the
+	  other produce no arbitration, so more rounds raise the number that
+	  do.
+
+config I2C_FAULT_TEST_STRESS_CYCLES
+	int "Fault-and-recover cycles run by the stress condition"
+	default 20
+	range 2 500
+	help
+	  Number of fault-and-recover cycles performed while checking that
+	  the driver's state does not degrade. One fault leaves little
+	  behind; the failures worth catching accumulate.
+
+config I2C_FAULT_TEST_STRETCH_SHORT_US
+	int "Clock stretch every driver is expected to tolerate"
+	default 200
+	range 10 10000
+	help
+	  Span the fault target holds SCL for in the conditions that must
+	  succeed. It is long enough to be measurable against a 100 kHz bus
+	  and short enough that no plausible driver times out on it.
+
+config I2C_FAULT_TEST_STRETCH_LONG_US
+	int "Clock stretch approaching a typical driver timeout"
+	default 5000
+	range 100 100000
+	help
+	  Span used by the condition that sits near the boundary. No outcome
+	  is required of it, because drivers set their timeouts differently.
+
+config I2C_FAULT_TEST_STRETCH_EXCESSIVE_US
+	int "Clock stretch beyond any plausible driver timeout"
+	default 50000
+	range 1000 500000
+	help
+	  Span used by the condition that must produce a bounded error rather
+	  than a hang. The stretch is applied by holding SCL through a GPIO
+	  and released by a timer, so a long value costs run time but does not
+	  occupy the CPU.
+
+config I2C_FAULT_TEST_HOLD_MS
+	int "Milliseconds a bus line is held low by the GPIO conditions"
+	default 20
+	range 1 1000
+	help
+	  How long SDA or SCL is pulled down through the forcing GPIOs. This
+	  is a millisecond-scale operation with no timing requirement: the
+	  bus is open drain, so the low wins whatever the controller drives.
+
+config I2C_FAULT_TEST_SCOPE_PAUSE
+	bool "Wait for a console keypress before the instrumented conditions"
+	select CONSOLE_SUBSYS
+	help
+	  Halt the run at the start of selected conditions and wait for a
+	  character on the console. The condition then runs to completion;
+	  there is no second pause.
+
+	  This exists so an oscilloscope can be armed for a single-shot
+	  capture at a known point. While the suite waits, no thread is
+	  driving the bus, so the first edge after the keypress is the event
+	  under investigation and an ordinary edge trigger is unambiguous.
+	  Without the pause, the same trigger fires on any of the hundreds of
+	  legitimate transfers the run performs first.
+
+	  CONSOLE_GETCHAR must be enabled alongside this symbol. It belongs to
+	  an optional choice, which cannot be selected from here, so the two
+	  are set together by the scope_pause.conf fragment in this directory.
+	  Enabling this symbol without it fails the build rather than silently
+	  running without a pause.
+
+	  This makes the suite interactive, so it must not be enabled for an
+	  automated run. It is off by default and no scenario in tests.yaml
+	  turns it on.
+
+source "Kconfig.zephyr"

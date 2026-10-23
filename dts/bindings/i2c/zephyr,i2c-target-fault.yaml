@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Programmable I2C target used to inject bus faults into a controller under
+  test.
+
+  The node describes a target answering a 7-bit address on the controller it
+  is a child of. A second controller, wired to the same SDA and SCL, is the
+  device under test. Tests arm the target through
+  <zephyr/drivers/i2c/target/fault.h> to make it NACK an address, NACK a
+  chosen data byte, refuse a read byte, or hold SCL.
+
+  Example:
+
+      &i2c1 {
+              fault_target: fault-target@42 {
+                      compatible = "zephyr,i2c-target-fault";
+                      reg = <0x42>;
+                      size = <32>;
+              };
+      };
+
+compatible: "zephyr,i2c-target-fault"
+
+include: [base.yaml, i2c-device.yaml]
+
+properties:
+  size:
+    type: int
+    default: 32
+    description: |
+      Size in bytes of the buffer the target presents. The first byte of a
+      write selects the offset within the buffer, so the size must not exceed
+      256.

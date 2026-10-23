@@ -1,0 +1,55 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+ * SPDX-FileCopyrightText: or an affiliate of Infineon Technologies AG. All rights reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/i2c/i2c.h>
+
+/*
+ * Test fixture: Infineon FM24W256 I2C F-RAM on a CY15FRAMKIT-001, wired to
+ * the Multi-Sense expansion connector J24.
+ *
+ * SCB1 on P6.3 (SCL) and P6.4 (SDA) is the pin pair the board documents for
+ * I2C, and its pinctrl nodes are already declared in the board devicetree.
+ * SCB1 carries a SPI node as well, kept disabled by the board, so the two
+ * cannot both be enabled.
+ *
+ * P6.3 and P6.4 are also the KitProg3 I2C bridge pins, so the bridge shares
+ * this bus. Nothing here depends on that, but a second controller on the bus
+ * is worth knowing about when a result looks like arbitration loss.
+ */
+
+/ {
+	aliases {
+		eeprom-0 = &eeprom0;
+	};
+};
+
+i2c1: &scb1 {
+	compatible = "infineon,i2c";
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	clocks = <&peri_clk_div1>;
+	pinctrl-0 = <&p6_3_scb1_i2c_scl &p6_4_scb1_i2c_sda>;
+	pinctrl-names = "default";
+
+	eeprom0: eeprom@51 {
+		compatible = "atmel,at24";
+		reg = <0x51>;
+		size = <DT_SIZE_K(32)>;
+		pagesize = <256>;
+		address-width = <16>;
+		timeout = <5>;
+	};
+};
+
+/* The board leaves this divider enabled and unassigned; uart0 uses div0 and
+ * the disabled SPI node claims div2.
+ */
+&peri_clk_div1 {
+	status = "okay";
+};

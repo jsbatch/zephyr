@@ -326,6 +326,50 @@ ZTEST(i2c_at24, test_transfer_multi_msg_write)
 			  "Data mismatch on scatter-gather write");
 }
 
+/* Test a page read split across two destination buffers in one transfer.  The
+ * second buffer carries no restart, so the controller should append it to the
+ * read already in progress and return the page unbroken.  Catches a controller
+ * that holds the bus for the append but never releases the byte the first
+ * buffer left unacknowledged, which stalls until the transfer times out.
+ *
+ * Passing does not prove the two buffers shared one transaction.  An AT24
+ * resumes from its internal address counter after a STOP, so a controller that
+ * splits the run into separate addressed reads returns the same bytes.  Only a
+ * bus capture distinguishes them.
+ */
+ZTEST(i2c_at24, test_transfer_multi_msg_read)
+{
+	struct i2c_msg msgs[3];
+	uint8_t addr_buf[ADDR_BYTES];
+	uint8_t pattern[PAGE_SIZE];
+	const size_t split = sizeof(pattern) / 2;
+	int ret;
+
+	fill_pattern(pattern, sizeof(pattern), 0xB0);
+	eeprom_page_write(TEST_AREA_BASE, pattern, sizeof(pattern));
+
+	memset(rx_buf, 0, sizeof(rx_buf));
+	eeprom_addr_encode(addr_buf, TEST_AREA_BASE);
+
+	msgs[0].buf = addr_buf;
+	msgs[0].len = ADDR_BYTES;
+	msgs[0].flags = I2C_MSG_WRITE;
+
+	msgs[1].buf = rx_buf;
+	msgs[1].len = split;
+	msgs[1].flags = I2C_MSG_RESTART | I2C_MSG_READ;
+
+	msgs[2].buf = &rx_buf[split];
+	msgs[2].len = sizeof(pattern) - split;
+	msgs[2].flags = I2C_MSG_READ | I2C_MSG_STOP;
+
+	ret = i2c_transfer(eeprom.bus, msgs, 3, eeprom.addr);
+	zassert_ok(ret, "Multi-msg read failed: %d", ret);
+
+	zassert_mem_equal(pattern, rx_buf, sizeof(pattern),
+			  "Data mismatch on multi-message read");
+}
+
 /* Test consecutive reads return identical data. */
 ZTEST(i2c_at24, test_read_consistency)
 {

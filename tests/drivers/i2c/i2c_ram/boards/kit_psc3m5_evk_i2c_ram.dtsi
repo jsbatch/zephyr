@@ -1,0 +1,25 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+ * SPDX-FileCopyrightText: or an affiliate of Infineon Technologies AG. All rights reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * Shared I2C RAM (F-RAM) test devicetree for the PSOC Control C3M5 evaluation
+ * kit. The board targets all include the same board devicetree, so they share
+ * this one overlay body rather than keeping identical copies.
+ *
+ * Fixture: CY15FRAMKIT-001 on the Arduino header, SW1 position 1 on so its
+ * FM24W256 answers at 0x51, the address this test uses.
+ *
+ * The same pins reach the KitProg3 bridge through R53 and R54, so KitProg3
+ * shares this bus unless those links are removed. A second controller on the
+ * bus is worth knowing about when a result looks like arbitration loss.
+ */
+
+/ {
+	aliases {
+		i2c-ram = &arduino_i2c;
+	};
+};

@@ -1,0 +1,73 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 Infineon Technologies AG,
+ * SPDX-FileCopyrightText: or an affiliate of Infineon Technologies AG. All rights reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * KIT_PSC3M5_EVK wiring for the I2C fault injection suite, tier 2 only. Pin
+ * assignments are from kit user guide 002-39385 Rev. *B, Table 3.
+ *
+ * Controller under test: SCB0 on P9[0] SCL and P9[2] SDA, at J3.10 and J3.9.
+ * The kit pulls both lines up to VTARG_REF through 4.7 kOhm (R50, R51), so the
+ * bus needs no shield.
+ *
+ * Fault target controller: SCB4 on P4[2] SCL and P4[1] SDA, at J4.7 and J4.6.
+ * The i2c_bus_short fixture requires J4.7 shorted to J3.10 and J4.6 shorted
+ * to J3.9. The kit brings these pins out as TCPWM signals with no other
+ * onboard function. P4[1] is also the input of the gpio_basic_api loopback
+ * (J4.4 to J4.6); remove that jumper before wiring this rig.
+ *
+ * The other free I2C pin options are taken: P1[2]/P1[3] are the SWD pins,
+ * P2[1]/P2[2] carry TDO and DFU_SW1, P3[2] is the mikroBUS UART RX, and SCB5
+ * on P8[1]/P8[3] is the SPI flash controller in the norflash variant.
+ */
+
+#include <zephyr/dt-bindings/i2c/i2c.h>
+
+/ {
+	aliases {
+		i2c-dut = &i2c0;
+	};
+};
+
+/* Controller carrying the fault target. */
+i2c4: &scb4 {
+	compatible = "infineon,i2c";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	clocks = <&peri0_group4_8bit_1>;
+
+	pinctrl-0 = <&p4_2_scb4_i2c_scl &p4_1_scb4_i2c_sda>;
+	pinctrl-names = "default";
+
+	/*
+	 * Per Table 3 the DUT bus reaches only the KitProg3 I2C bridge and the
+	 * expansion headers, so 0x70 is free with no shield fitted.
+	 */
+	fault_target: fault-target@70 {
+		compatible = "zephyr,i2c-target-fault";
+		reg = <0x70>;
+		size = <32>;
+	};
+};
+
+/* The I2C driver reprograms the divider at init; the value here is a start. */
+&peri0_group4_8bit_1 {
+	status = "okay";
+	clock-div = <10>;
+};
+
+&p4_2_scb4_i2c_scl {
+	drive-open-drain;
+	input-enable;
+};
+
+&p4_1_scb4_i2c_sda {
+	drive-open-drain;
+	input-enable;
+};

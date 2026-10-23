@@ -30,6 +30,9 @@ supported:
   - comparator
   - dmic
   - i2c
+  - arduino_gpio
+  - arduino_i2c
+  - arduino_spi
   - counter
   - pwm
   - dac

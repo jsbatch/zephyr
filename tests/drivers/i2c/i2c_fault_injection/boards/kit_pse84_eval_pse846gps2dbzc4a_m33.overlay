@@ -1,0 +1,126 @@
+/*
+ * Copyright (c) 2026 Infineon Technologies AG,
+ * or an affiliate of Infineon Technologies AG. All rights reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * KIT_PSE84_EVAL wiring for the I2C fault injection suite.
+ *
+ * Every connection lands on the Arduino header J3, and every pin there sits
+ * on the VDD_PERI domain, so no jumper needs moving and no level shifting
+ * happens between them. Pin assignments are from kit user guide 002-39007
+ * Rev. *B, Table 2.
+ *
+ * Controller under test: SCB0 on P8[0] SCL and P8[1] SDA, at J3.10 and J3.9.
+ *
+ * Fault target controller: SCB10 on P16[0] SCL and P16[1] SDA, at J3.6 and
+ * J3.4. The i2c_bus_short fixture requires J3.6 shorted to J3.10 and J3.4
+ * shorted to J3.9. This is the controller pairing that
+ * samples/i2c_slave_master_test already uses on this board.
+ *
+ * Line forcing for the i2c_bus_fault fixture: P16[2] and P16[3], at J3.5 and
+ * J3.3, which the kit brings out as SPI MISO and SPI CS. Jumper J3.5 to the
+ * SCL net and J3.3 to the SDA net.
+ *
+ * With both fixtures wired at once, each net joins three pins. J3 alone
+ * would need two wires on one pin, but the same signals are also brought out
+ * on the mikroBUS headers J9 and J17, which are not populated by default.
+ * With them fitted, keep the i2c_bus_short jumpers on J3 and add:
+ *   - SCL: J9.5 (P16[2], forcing) to J17.5 (P8[0], the same net as J3.10)
+ *   - SDA: J9.3 (P16[3], forcing) to J17.6 (P8[1], the same net as J3.9)
+ *
+ * Do not fit an Arduino shield that uses SPI while these jumpers are in
+ * place, and do not wire this rig at the same time as the one for
+ * tests/drivers/spi/spi_ram, which claims the same four P16 pins for an
+ * FM25W256 F-RAM. With an SPI device on the net, I2C traffic on SDA would
+ * assert its chip select through P16[3] and its MISO output would then drive
+ * against the open-drain bus through P16[2].
+ *
+ * P7[0] and P7[1] at J40 were considered for the forcing pins and rejected.
+ * They are a fixed 1.8 V domain while the J3 pins follow VDD_PERI, which
+ * defaults to 3.3 V (Table 10), so using them would require moving J23.
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/i2c/i2c.h>
+
+/ {
+	aliases {
+		i2c-dut = &i2c0;
+		i2c-fault-contender = &bosch_bmi270;
+	};
+
+	zephyr,user {
+		scl-gpios = <&gpio_prt16 2 GPIO_ACTIVE_HIGH>;
+		sda-gpios = <&gpio_prt16 3 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+/*
+ * SCB0 is the controller under test. The board's own devicetree already
+ * enables it as i2c0 on P8[0] and P8[1], sets its clock and declares the
+ * BMI270 at 0x68 on it, so none of that is restated here. Overriding its
+ * clock would change a rate the board chose deliberately.
+ *
+ * The recovery pins named below are the bus pins themselves, not spare GPIOs
+ * and not the forcing pins declared under zephyr,user. Recovery switches
+ * P8[0] and P8[1] from the SCB to GPIO, bit-bangs the release sequence, and
+ * restores the default pin state, so it needs no wiring and claims nothing
+ * the SCB is using at the time.
+ *
+ * Naming them is what enables CONFIG_I2C_INFINEON_BUS_RECOVERY, which is
+ * gated on both properties being present on an infineon,i2c node. Without
+ * them the controller reports -ENOSYS and the recovery conditions skip.
+ */
+&i2c0 {
+	scl-gpios = <&gpio_prt8 0 GPIO_OPEN_DRAIN>;
+	sda-gpios = <&gpio_prt8 1 GPIO_OPEN_DRAIN>;
+};
+
+/* Controller carrying the fault target. */
+i2c10: &scb10 {
+	compatible = "infineon,i2c";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	clocks = <&peri0_group1_16bit_2>;
+
+	pinctrl-0 = <&p16_0_scb10_i2c_scl &p16_1_scb10_i2c_sda>;
+	pinctrl-names = "default";
+
+	/*
+	 * 0x70 is clear of every address populated on the kit, which are
+	 * 0x08, 0x15, 0x18, 0x38, 0x45, 0x68 and 0x69 per Table 33. It must
+	 * also sit above the BMI270 at 0x68, which the contention condition
+	 * addresses from this controller so that SCB0 is the one to lose
+	 * arbitration.
+	 */
+	fault_target: fault-target@70 {
+		compatible = "zephyr,i2c-target-fault";
+		reg = <0x70>;
+		size = <32>;
+	};
+};
+
+&peri0_group1_16bit_2 {
+	status = "okay";
+	clock-div = <10>;
+};
+
+&gpio_prt16 {
+	status = "okay";
+};
+
+&p16_0_scb10_i2c_scl {
+	drive-open-drain;
+	input-enable;
+};
+
+&p16_1_scb10_i2c_sda {
+	drive-open-drain;
+	input-enable;
+};

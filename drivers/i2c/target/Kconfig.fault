@@ -1,0 +1,39 @@
+# I2C fault-injection target configuration options
+
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig I2C_TARGET_FAULT
+	bool "I2C fault-injection target driver"
+	default y
+	depends on DT_HAS_ZEPHYR_I2C_TARGET_FAULT_ENABLED
+	help
+	  Enable a programmable I2C target that can be told to NACK the
+	  address phase, NACK a chosen data byte, refuse to supply a read
+	  byte, or hold SCL for a chosen span. It is registered on one
+	  controller while a second controller wired to the same SDA and SCL
+	  acts as the device under test, so the faults it produces are bus
+	  events rather than a simulation of them.
+
+	  The target is a test-support driver and does not model any real
+	  device. It is used by tests/drivers/i2c/i2c_fault_injection.
+
+	  The target never delays. Its callbacks run in interrupt context on
+	  most controllers, so producing a clock stretch by refusing to return
+	  from one is not permissible; a test that wants a stretch installs a
+	  hook and pulls SCL low from it instead.
+
+if I2C_TARGET_FAULT
+
+config I2C_TARGET_FAULT_TRACE_DEPTH
+	int "Callbacks recorded per target instance"
+	default 64
+	range 8 1024
+	help
+	  Number of target callback invocations the driver records. A test
+	  reads the trace back to confirm the fault was injected where it
+	  intended, rather than inferring it from the value the controller
+	  returned. The trace saturates rather than wrapping, because the
+	  events of interest are the first ones after a fault is armed.
+
+endif # I2C_TARGET_FAULT
